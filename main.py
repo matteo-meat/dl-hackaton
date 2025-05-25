@@ -1,23 +1,26 @@
 import argparse
-import torch
+import torch 
 from torch_geometric.loader import DataLoader
-from torch_geometric.nn import GCNConv, global_mean_pool
+from torch_geometric.nn import GCNConv, global_mean_pool, GINConv
 from loadData import GraphDataset
 import os
 import pandas as pd
 
 
 def add_zeros(data):
-    data.x = torch.zeros(data.num_nodes, dtype=torch.long)  
+    # data.x = torch.zeros(data.num_nodes, dtype=torch.long)
+    data.x = torch.arange(data.num_nodes)  
     return data
 
 
 class SimpleGCN(torch.nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim):
         super(SimpleGCN, self).__init__()
-        self.embedding = torch.nn.Embedding(1, input_dim) 
+        self.embedding = torch.nn.Embedding(500, input_dim) 
         self.conv1 = GCNConv(input_dim, hidden_dim)
         self.conv2 = GCNConv(hidden_dim, hidden_dim)
+        # self.conv1 = GINConv(torch.nn.Linear(input_dim, hidden_dim), torch.nn.ReLU(), torch.nn.Linear(hidden_dim, hidden_dim))
+        # self.conv2 = GINConv(torch.nn.Linear(input_dim, hidden_dim), torch.nn.ReLU(), torch.nn.Linear(hidden_dim, hidden_dim))
         self.global_pool = global_mean_pool  
         self.fc = torch.nn.Linear(hidden_dim, output_dim)
 
@@ -68,7 +71,8 @@ def evaluate(data_loader, calculate_accuracy=False):
 
 def main(args):
     global model, optimizer, criterion, device
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
     # Parameters for the GCN model
     input_dim = 300  # Example input feature dimension (you can adjust this)
@@ -90,7 +94,7 @@ def main(args):
         train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
 
         # Training loop
-        num_epochs = 2
+        num_epochs = 50
         for epoch in range(num_epochs):
             train_loss = train(train_loader)
             train_acc, _ = evaluate(train_loader, calculate_accuracy=True)
