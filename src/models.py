@@ -44,7 +44,9 @@ class CulturalClassificationGNN(nn.Module):
         
         self.dropout = nn.Dropout(0.2)
         
-    def forward(self, x, edge_index, batch):
+    def forward(self, data):
+        x, edge_index, batch = data.x, data.edge_index, data.batch
+        x = self.embedding(x)  
         x = F.relu(self.conv1(x, edge_index))
         x = self.dropout(x)
         x = F.relu(self.conv2(x, edge_index))
