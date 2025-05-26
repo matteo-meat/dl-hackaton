@@ -10,7 +10,7 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 
 from src.utils import set_seed
-from models import SimpleGCN, CulturalClassificationGNN
+from src.models import SimpleGCN, CulturalClassificationGNN
 from src.loadData import GraphDataset
 
 
