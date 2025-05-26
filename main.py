@@ -169,7 +169,7 @@ def main(args):
                 current_epoch=epoch
             )
 
-            train_acc, _ = evaluate(train_loader, calculate_accuracy=True)
+            train_acc, _ = evaluate(train_loader, model, device, calculate_accuracy=True)
             print(f"Epoch {epoch + 1}/{num_epochs}, Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}")
 
             # Save logs for training progress
