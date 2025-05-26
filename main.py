@@ -105,7 +105,7 @@ def plot_training_progress(train_losses, train_accuracies, output_dir):
 def main(args):
 
     set_seed()
-    device = torch.device("cuda:" + str(args.device)) if torch.cuda.is_available() else torch.device("cpu")
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     # Parameters for the GCN model
     input_dim = 300  # Example input feature dimension (you can adjust this)
     hidden_dim = 64
