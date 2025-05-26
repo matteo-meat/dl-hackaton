@@ -10,11 +10,11 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 
 from src.utils import set_seed
-from src.model import SimpleGCN
+from models import SimpleGCN, CulturalClassificationGNN
 from src.loadData import GraphDataset
 
 
-def add_zeros(data):
+def init_features(data):
     # data.x = torch.zeros(data.num_nodes, dtype=torch.long)
     data.x = torch.arange(data.num_nodes)  
     return data
@@ -111,14 +111,17 @@ def main(args):
     hidden_dim = 64
     output_dim = 6  # Number of classes
 
-    # Initialize the model, optimizer, and loss criterion
-    model = SimpleGCN(input_dim, hidden_dim, output_dim).to(device)
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-    criterion = torch.nn.CrossEntropyLoss()
-
-
     script_dir = os.path.dirname(os.path.abspath(__file__))
     num_checkpoints = args.num_checkpoints if args.num_checkpoints else 5
+
+    # Initialize the model, optimizer, and loss criterion
+    if args.gnn == 'simple':
+         model = SimpleGCN(input_dim, hidden_dim, output_dim).to(device)
+    elif args.gnn == 'mnlp':
+         model = CulturalClassificationGNN(input_dim, hidden_dim, output_dim).to(device)
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    criterion = torch.nn.CrossEntropyLoss()
 
     test_dir_name = os.path.basename(os.path.dirname(args.test_path))
 
@@ -139,13 +142,13 @@ def main(args):
         print(f"Loaded best model from {best_checkpoint_path}")
 
     # Prepare test dataset and loader
-    test_dataset = GraphDataset(args.test_path, transform=add_zeros)
+    test_dataset = GraphDataset(args.test_path, transform=init_features)
     test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
 
     # Train dataset and loader (if train_path is provided)
     if args.train_path:
 
-        train_dataset = GraphDataset(args.train_path, transform=add_zeros)
+        train_dataset = GraphDataset(args.train_path, transform=init_features)
         train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
 
         # Training loop
@@ -197,7 +200,7 @@ if __name__ == "__main__":
     parser.add_argument("--test_path", type=str, required=True, help="Path to the test dataset.")
     parser.add_argument("--num_checkpoints", type=int, help="Number of checkpoints to save during training.")
     # parser.add_argument('--device', type=int, default=1, help='which gpu to use if any (default: 0)')
-    # parser.add_argument('--gnn', type=str, default='gin', help='GNN gin, gin-virtual, or gcn, or gcn-virtual (default: gin-virtual)')
+    parser.add_argument('--gnn', type=str, default='simple', help='GNN simple, mnlp (default: simple)')
     # parser.add_argument('--drop_ratio', type=float, default=0.5, help='dropout ratio (default: 0.5)')
     # parser.add_argument('--num_layer', type=int, default=5, help='number of GNN message passing layers (default: 5)')
     # parser.add_argument('--emb_dim', type=int, default=300, help='dimensionality of hidden units in GNNs (default: 300)')
