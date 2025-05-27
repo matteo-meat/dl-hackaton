@@ -15,16 +15,16 @@ from src.models import SimpleGCN, CulturalClassificationGNN, GIN
 from src.loadData import GraphDataset
 
 
-# def init_features(data):
-#     # data.x = torch.zeros(data.num_nodes, dtype=torch.long)
-#     data.x = torch.arange(data.num_nodes)  
-#     return data
-
-def add_degrees(data):
-    deg = torch.bincount(data.edge_index[0], minlength=data.num_nodes).float().unsqueeze(1)
-    noise = torch.randn_like(deg) * 0.05  # small noise for variability
-    data.x = deg + noise
+def init_features(data):
+    # data.x = torch.zeros(data.num_nodes, dtype=torch.long)
+    x = torch.arange(data.num_nodes).unsqueeze(1).float()
+    data.x = x
     return data
+# def add_degrees(data):
+#     deg = torch.bincount(data.edge_index[0], minlength=data.num_nodes).float().unsqueeze(1)
+#     noise = torch.randn_like(deg) * 0.05  # small noise for variability
+#     data.x = deg + noise
+#     return data
 
 
 
@@ -152,12 +152,12 @@ def main(args):
         print(f"Loaded best model from {best_checkpoint_path}")
 
     # Prepare test dataset and loader
-    test_dataset = GraphDataset(args.test_path, transform=add_degrees)
+    test_dataset = GraphDataset(args.test_path, transform=init_features)
     test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
 
     # Train dataset and loader (if train_path is provided)
     if args.train_path:
-        train_dataset = GraphDataset(args.train_path, transform=add_degrees)
+        train_dataset = GraphDataset(args.train_path, transform=init_features)
 
         val_ratio = 0.2
         num_val = int(len(train_dataset) * val_ratio)
@@ -168,7 +168,7 @@ def main(args):
         val_loader = DataLoader(val_set, batch_size=32, shuffle=False )
 
         # Training loop
-        num_epochs = 50
+        num_epochs = 200
         best_accuracy = 0.0
         train_losses = []
         train_accuracies = []
@@ -210,10 +210,11 @@ def main(args):
                 epochs_without_improvement += 1
                 print(f"No improvement in validation accuracy for {epochs_without_improvement} epoch(s)")
 
+            plot_training_progress(train_losses, train_accuracies, os.path.join(logs_folder, "plots"))
             if epochs_without_improvement >= patience:
                 print(f"🛑 Early stopping triggered after {epoch + 1} epochs!")
                 break
-                plot_training_progress(train_losses, train_accuracies, os.path.join(logs_folder, "plots"))
+                
 
     # Evaluate and save test predictions
     model.load_state_dict(torch.load(best_checkpoint_path))
