@@ -1,5 +1,6 @@
 
 import torch 
+from torch.utils.data import random_split
 from torch_geometric.loader import DataLoader
 
 import os
@@ -10,14 +11,21 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 
 from src.utils import set_seed
-from src.models import SimpleGCN, CulturalClassificationGNN
+from src.models import SimpleGCN, CulturalClassificationGNN, GIN
 from src.loadData import GraphDataset
 
 
-def init_features(data):
-    # data.x = torch.zeros(data.num_nodes, dtype=torch.long)
-    data.x = torch.arange(data.num_nodes)  
+# def init_features(data):
+#     # data.x = torch.zeros(data.num_nodes, dtype=torch.long)
+#     data.x = torch.arange(data.num_nodes)  
+#     return data
+
+def add_degrees(data):
+    deg = torch.bincount(data.edge_index[0], minlength=data.num_nodes).float().unsqueeze(1)
+    noise = torch.randn_like(deg) * 0.05  # small noise for variability
+    data.x = deg + noise
     return data
+
 
 
 def train(data_loader, model, optimizer, criterion, device, save_checkpoints, checkpoint_path, current_epoch):
@@ -119,9 +127,11 @@ def main(args):
          model = SimpleGCN(input_dim, hidden_dim, output_dim).to(device)
     elif args.gnn == 'mnlp':
          model = CulturalClassificationGNN(input_dim, hidden_dim, output_dim).to(device)
+    elif args.gnn == 'gin':
+         model = GIN(input_dim, hidden_dim, output_dim).to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-    criterion = torch.nn.CrossEntropyLoss()
+    criterion = torch.nn.CrossEntropyLoss(label_smoothing=0.1)
 
     test_dir_name = os.path.basename(os.path.dirname(args.test_path))
 
@@ -142,14 +152,20 @@ def main(args):
         print(f"Loaded best model from {best_checkpoint_path}")
 
     # Prepare test dataset and loader
-    test_dataset = GraphDataset(args.test_path, transform=init_features)
+    test_dataset = GraphDataset(args.test_path, transform=add_degrees)
     test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
 
     # Train dataset and loader (if train_path is provided)
     if args.train_path:
+        train_dataset = GraphDataset(args.train_path, transform=add_degrees)
 
-        train_dataset = GraphDataset(args.train_path, transform=init_features)
-        train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+        val_ratio = 0.2
+        num_val = int(len(train_dataset) * val_ratio)
+        num_train = len(train_dataset) - num_val
+        train_set, val_set = random_split(train_dataset, [num_train, num_val])
+
+        train_loader = DataLoader(train_set, batch_size=32, shuffle=True)
+        val_loader = DataLoader(val_set, batch_size=32, shuffle=False )
 
         # Training loop
         num_epochs = 50
@@ -163,7 +179,13 @@ def main(args):
         else:
             checkpoint_intervals = [num_epochs]
 
-        
+                                                        ###### TRAIN LOOP #####        
+        patience = 10
+        epochs_without_improvement = 0
+        best_val_accuracy = 0.0
+        train_losses = []
+        train_accuracies = []
+
         for epoch in range(num_epochs):
             train_loss = train(
                 train_loader, model, optimizer, criterion, device,
@@ -173,20 +195,25 @@ def main(args):
             )
 
             train_acc, _ = evaluate(train_loader, model, device, calculate_accuracy=True)
-            print(f"Epoch {epoch + 1}/{num_epochs}, Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}")
+            val_acc, _ = evaluate(val_loader, model, device, calculate_accuracy=True)
+            print(f"Epoch {epoch + 1}/{num_epochs}, Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}, Val Acc: {val_acc:.4f}")
 
-            # Save logs for training progress
             train_losses.append(train_loss)
             train_accuracies.append(train_acc)
-            logging.info(f"Epoch {epoch + 1}/{num_epochs}, Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}")
-            
-            # Save best model
-            if train_acc > best_accuracy:
-                best_accuracy = train_acc
-                torch.save(model.state_dict(), best_checkpoint_path)
-                print(f"Best model updated and saved at {best_checkpoint_path}")
 
-        plot_training_progress(train_losses, train_accuracies, os.path.join(logs_folder, "plots"))
+            if val_acc > best_val_accuracy:
+                best_val_accuracy = val_acc
+                epochs_without_improvement = 0
+                torch.save(model.state_dict(), best_checkpoint_path)
+                print(f"✅ Best model updated (Val Acc: {val_acc:.4f}) and saved at {best_checkpoint_path}")
+            else:
+                epochs_without_improvement += 1
+                print(f"No improvement in validation accuracy for {epochs_without_improvement} epoch(s)")
+
+            if epochs_without_improvement >= patience:
+                print(f"🛑 Early stopping triggered after {epoch + 1} epochs!")
+                break
+                plot_training_progress(train_losses, train_accuracies, os.path.join(logs_folder, "plots"))
 
     # Evaluate and save test predictions
     model.load_state_dict(torch.load(best_checkpoint_path))
@@ -200,7 +227,7 @@ if __name__ == "__main__":
     parser.add_argument("--test_path", type=str, required=True, help="Path to the test dataset.")
     parser.add_argument("--num_checkpoints", type=int, help="Number of checkpoints to save during training.")
     # parser.add_argument('--device', type=int, default=1, help='which gpu to use if any (default: 0)')
-    parser.add_argument('--gnn', type=str, default='simple', help='GNN simple, mnlp (default: simple)')
+    parser.add_argument('--gnn', type=str, default='simple', help='GNN simple, mnlp, gin (default: simple)')
     # parser.add_argument('--drop_ratio', type=float, default=0.5, help='dropout ratio (default: 0.5)')
     # parser.add_argument('--num_layer', type=int, default=5, help='number of GNN message passing layers (default: 5)')
     # parser.add_argument('--emb_dim', type=int, default=300, help='dimensionality of hidden units in GNNs (default: 300)')

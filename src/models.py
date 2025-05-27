@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch_geometric.nn import GCNConv, GINConv, GATConv, global_mean_pool
+from torch_geometric.nn import GCNConv, GINConv, GATConv, global_mean_pool, global_add_pool
 
 class SimpleGCN(torch.nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim):
@@ -23,7 +23,41 @@ class SimpleGCN(torch.nn.Module):
         x = self.global_pool(x, batch)  
         out = self.fc(x)  
         return out
-    
+
+class GIN(torch.nn.Module):
+    def __init__(self, input_dim, hidden_dim, output_dim, dropout=0.5 ):
+        super().__init__()
+        self.conv1 = GINConv(nn.Seq(nn.Linear(input_dim, hidden_dim), nn.BatchNorm1d(hidden_dim), nn.ReLU(), nn.Linear(hidden_dim, hidden_dim), nn.ReLU()))
+        self.conv2 = GINConv(nn.Seq(nn.Linear(input_dim, hidden_dim), nn.BatchNorm1d(hidden_dim), nn.ReLU(), nn.Linear(hidden_dim, hidden_dim), nn.ReLU()))
+        self.conv3 = GINConv(nn.Seq(nn.Linear(input_dim, hidden_dim), nn.BatchNorm1d(hidden_dim), nn.ReLU(), nn.Linear(hidden_dim, hidden_dim), nn.ReLU()))
+        self.lin1 = nn.Linear(hidden_dim*3, hidden_dim*3)
+        self.lin2 = nn.Linear(hidden_dim*3, output_dim)
+
+        self.dropout = nn.Dropout(dropout)
+        self.fc = nn.Linear(hidden_dim, output_dim)
+    def forward(self, data, batch):
+        x, edge_index, batch = data.x, data.edge_index, data.batch
+
+        # Node embeddings - h1,h2,h3 are node level features
+        h1 = self.conv1(x, edge_index)
+        h2 = self.conv2(h1, edge_index)
+        h3 = self.conv3(h2, edge_index)
+
+        # Compressing all nodde features in a graph into a single vector per graph
+        g1 = global_add_pool(h1, batch)
+        g2 = global_add_pool(h2, batch)
+        g3 = global_add_pool(h3, batch)
+
+        # Concatenate graph embeddings
+        h = torch.cat((h1,h2,h3), dim=1)
+
+        # Classification head
+        h = self.lin1(h)
+        h = h.relu
+        h = F.dropout(h, p=0.5, training=self.training)
+        h = self.lin2(h)
+        return h
+
 class CulturalClassificationGNN(nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim, use_gat = False):
         super(CulturalClassificationGNN, self).__init__()
