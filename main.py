@@ -223,8 +223,8 @@ def main(args):
             train_preds, train_labels, train_acc = evaluate(train_loader, model, device, calculate_accuracy=True)
             val_preds, val_labels, val_acc = evaluate(val_loader, model, device, calculate_accuracy=True)
 
-            train_f1 = f1_score(train_labels, train_preds)
-            val_f1 = f1_score(val_labels, val_preds)
+            train_f1 = f1_score(train_labels, train_preds, average = "macro")
+            val_f1 = f1_score(val_labels, val_preds, average = "macro")
 
             print(f"Epoch {epoch + 1}/{num_epochs}, Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}, Train F1: {train_f1:.4f}, Val Acc: {val_acc:.4f}, Val F1: {val_f1:.4f}")
 
