@@ -1,5 +1,6 @@
 
 import torch 
+from torch.utils.data import random_split
 from torch_geometric.loader import DataLoader
 
 import os
@@ -10,17 +11,29 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 
 from src.utils import set_seed
-from src.models import SimpleGCN, CulturalClassificationGNN, GIN
+from src.models import SimpleGCN, CulturalClassificationGNN, GIN, paperGIN, RobustGIN
 from src.loadData import GraphDataset
 
 
+# def init_features(data):
+#     # data.x = torch.zeros(data.num_nodes, dtype=torch.long)
+#     data.x = torch.arange(data.num_nodes)
+#     return data
 def init_features(data):
-    # data.x = torch.zeros(data.num_nodes, dtype=torch.long)
-    data.x = torch.arange(data.num_nodes)  
+    deg = torch.bincount(data.edge_index[0], minlength=data.num_nodes).unsqueeze(1).float()
+    noise = torch.randn_like(deg) * 0.1
+    data.x = deg + noise
     return data
 
 
-def train(data_loader, model, optimizer, criterion, device, save_checkpoints, checkpoint_path, current_epoch):
+# def label_smoothness_loss(predictions, edge_index):
+#     row, col = edge_index
+#     diff = predictions[row] - predictions[col]
+#     loss = torch.mean(torch.norm(diff, p=2, dim=1))
+#     return loss
+
+
+def train(data_loader, model, optimizer, criterion, device, save_checkpoints, checkpoint_path, current_epoch, alpha = 0.2):
     model.train()
     total_loss = 0
     for data in tqdm(data_loader, desc="Iterating training graphs", unit="batch"):
@@ -28,6 +41,8 @@ def train(data_loader, model, optimizer, criterion, device, save_checkpoints, ch
         optimizer.zero_grad()
         output = model(data)
         loss = criterion(output, data.y)
+        #loss_smooth = label_smoothness_loss(node_logits, data.edge_index)
+        #loss = loss_cls + alpha*loss_smooth
         loss.backward()
         optimizer.step()
         total_loss += loss.item()
@@ -48,7 +63,7 @@ def evaluate(data_loader, model, device, calculate_accuracy=False):
     with torch.no_grad():
         for data in tqdm(data_loader, desc="Iterating eval graphs", unit="batch"):
             data = data.to(device)
-            output = model(data)
+            output= model(data)
             pred = output.argmax(dim=1)
             predictions.extend(pred.cpu().numpy())
             if calculate_accuracy:
@@ -101,13 +116,12 @@ def plot_training_progress(train_losses, train_accuracies, output_dir):
     plt.savefig(os.path.join(output_dir, "training_progress.png"))
     plt.close()
 
-
 def main(args):
 
     set_seed()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     # Parameters for the GCN model
-    input_dim = 32  # Example input feature dimension (you can adjust this)
+    input_dim = 1  # Example input feature dimension (you can adjust this)
     hidden_dim = 64
     output_dim = 6  # Number of classes
 
@@ -121,9 +135,13 @@ def main(args):
          model = CulturalClassificationGNN(input_dim, hidden_dim, output_dim).to(device)
     elif args.gnn == 'gin':
          model = GIN(input_dim, hidden_dim, output_dim).to(device)
+    elif args.gnn == 'papergin':
+         model = paperGIN(input_dim, hidden_dim, output_dim).to(device)
+    elif args.gnn == 'robgin':
+         model = RobustGIN(input_dim, hidden_dim, output_dim).to(device)
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
-    criterion = torch.nn.CrossEntropyLoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    criterion = torch.nn.CrossEntropyLoss(label_smoothing=0.1)
 
     test_dir_name = os.path.basename(os.path.dirname(args.test_path))
 
@@ -149,12 +167,18 @@ def main(args):
 
     # Train dataset and loader (if train_path is provided)
     if args.train_path:
-
         train_dataset = GraphDataset(args.train_path, transform=init_features)
-        train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+
+        val_ratio = 0.2
+        num_val = int(len(train_dataset) * val_ratio)
+        num_train = len(train_dataset) - num_val
+        train_set, val_set = random_split(train_dataset, [num_train, num_val])
+
+        train_loader = DataLoader(train_set, batch_size=32, shuffle=True)
+        val_loader = DataLoader(val_set, batch_size=32, shuffle=False )
 
         # Training loop
-        num_epochs = 50
+        num_epochs = 200
         best_accuracy = 0.0
         train_losses = []
         train_accuracies = []
@@ -165,7 +189,13 @@ def main(args):
         else:
             checkpoint_intervals = [num_epochs]
 
-        
+                                                        ###### TRAIN LOOP #####        
+        patience = 30
+        epochs_without_improvement = 0
+        best_val_accuracy = 0.0
+        train_losses = []
+        train_accuracies = []
+
         for epoch in range(num_epochs):
             train_loss = train(
                 train_loader, model, optimizer, criterion, device,
@@ -175,20 +205,26 @@ def main(args):
             )
 
             train_acc, _ = evaluate(train_loader, model, device, calculate_accuracy=True)
-            print(f"Epoch {epoch + 1}/{num_epochs}, Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}")
+            val_acc, _ = evaluate(val_loader, model, device, calculate_accuracy=True)
+            print(f"Epoch {epoch + 1}/{num_epochs}, Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}, Val Acc: {val_acc:.4f}")
 
-            # Save logs for training progress
             train_losses.append(train_loss)
             train_accuracies.append(train_acc)
-            logging.info(f"Epoch {epoch + 1}/{num_epochs}, Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}")
-            
-            # Save best model
-            if train_acc > best_accuracy:
-                best_accuracy = train_acc
-                torch.save(model.state_dict(), best_checkpoint_path)
-                print(f"Best model updated and saved at {best_checkpoint_path}")
 
-        plot_training_progress(train_losses, train_accuracies, os.path.join(logs_folder, "plots"))
+            if val_acc > best_val_accuracy:
+                best_val_accuracy = val_acc
+                epochs_without_improvement = 0
+                torch.save(model.state_dict(), best_checkpoint_path)
+                print(f"✅ Best model updated (Val Acc: {val_acc:.4f}) and saved at {best_checkpoint_path}")
+            else:
+                epochs_without_improvement += 1
+                print(f"No improvement in validation accuracy for {epochs_without_improvement} epoch(s)")
+
+            plot_training_progress(train_losses, train_accuracies, os.path.join(logs_folder, "plots"))
+            if epochs_without_improvement >= patience:
+                print(f"🛑 Early stopping triggered after {epoch + 1} epochs!")
+                break
+                
 
     # Evaluate and save test predictions
     model.load_state_dict(torch.load(best_checkpoint_path))
@@ -202,7 +238,7 @@ if __name__ == "__main__":
     parser.add_argument("--test_path", type=str, required=True, help="Path to the test dataset.")
     parser.add_argument("--num_checkpoints", type=int, help="Number of checkpoints to save during training.")
     # parser.add_argument('--device', type=int, default=1, help='which gpu to use if any (default: 0)')
-    parser.add_argument('--gnn', type=str, default='simple', help='GNN simple, mnlp (default: simple)')
+    parser.add_argument('--gnn', type=str, default='simple', help='GNN simple, mnlp, gin (default: simple)')
     # parser.add_argument('--drop_ratio', type=float, default=0.5, help='dropout ratio (default: 0.5)')
     # parser.add_argument('--num_layer', type=int, default=5, help='number of GNN message passing layers (default: 5)')
     # parser.add_argument('--emb_dim', type=int, default=300, help='dimensionality of hidden units in GNNs (default: 300)')
