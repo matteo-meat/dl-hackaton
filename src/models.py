@@ -10,7 +10,7 @@ from src.conv import GNN_node, GNN_node_Virtualnode
 class SimpleGCN(torch.nn.Module):
     def __init__(self, input_dim, hidden_dim, output_dim):
         super(SimpleGCN, self).__init__()
-        self.embedding = torch.nn.Embedding(500, input_dim) 
+        self.embedding = torch.nn.Embedding(1, input_dim) 
         self.conv1 = GCNConv(input_dim, hidden_dim)
         self.conv2 = GCNConv(hidden_dim, hidden_dim)
         # self.conv1 = GINConv(torch.nn.Linear(input_dim, hidden_dim), torch.nn.ReLU(), torch.nn.Linear(hidden_dim, hidden_dim))
@@ -34,7 +34,7 @@ class CulturalClassificationGNN(nn.Module):
         
         self.use_gat = use_gat
         # Graph convolutional layers
-        self.embedding = torch.nn.Embedding(500, input_dim) 
+        self.embedding = torch.nn.Embedding(1, input_dim) 
         self.conv1 = GCNConv(input_dim, hidden_dim)
         self.conv2 = GCNConv(hidden_dim, hidden_dim)
 

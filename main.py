@@ -15,8 +15,7 @@ from src.loadData import GraphDataset
 
 
 def init_features(data):
-    # data.x = torch.zeros(data.num_nodes, dtype=torch.long)
-    data.x = torch.arange(data.num_nodes)  
+    data.x = torch.zeros(data.num_nodes, dtype=torch.long)
     return data
 
 
