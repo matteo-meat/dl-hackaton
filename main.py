@@ -1,5 +1,6 @@
 
 import torch 
+from torch.utils.data import random_split
 from torch_geometric.loader import DataLoader
 
 import os
@@ -10,7 +11,7 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 
 from src.utils import set_seed
-from src.models import SimpleGCN, CulturalClassificationGNN, GIN
+from src.models import SimpleGCN, CulturalClassificationGNN, GIN, SLGAT
 from src.loadData import GraphDataset
 
 
@@ -107,7 +108,7 @@ def main(args):
     set_seed()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     # Parameters for the GCN model
-    input_dim = 32  # Example input feature dimension (you can adjust this)
+    input_dim = 300  # Example input feature dimension (you can adjust this)
     hidden_dim = 64
     output_dim = 6  # Number of classes
 
@@ -121,6 +122,8 @@ def main(args):
          model = CulturalClassificationGNN(input_dim, hidden_dim, output_dim).to(device)
     elif args.gnn == 'gin':
          model = GIN(input_dim, hidden_dim, output_dim).to(device)
+    elif args.gnn == 'slgat':
+         model = SLGAT(input_dim, hidden_dim, output_dim).to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
     criterion = torch.nn.CrossEntropyLoss()
@@ -150,8 +153,18 @@ def main(args):
     # Train dataset and loader (if train_path is provided)
     if args.train_path:
 
+        # train_dataset = GraphDataset(args.train_path, transform=init_features)
+        # train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+
         train_dataset = GraphDataset(args.train_path, transform=init_features)
-        train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+
+        val_ratio = 0.2
+        num_val = int(len(train_dataset) * val_ratio)
+        num_train = len(train_dataset) - num_val
+        train_set, val_set = random_split(train_dataset, [num_train, num_val])
+
+        train_loader = DataLoader(train_set, batch_size=32, shuffle=True)
+        val_loader = DataLoader(val_set, batch_size=32, shuffle=False )
 
         # Training loop
         num_epochs = 500
@@ -167,6 +180,9 @@ def main(args):
 
         patience = 20
         epochs_without_improvement = 0
+        best_val_accuracy = 0.0
+        train_losses = []
+        train_accuracies = []
 
         for epoch in range(num_epochs):
             train_loss = train(
@@ -177,18 +193,20 @@ def main(args):
             )
 
             train_acc, _ = evaluate(train_loader, model, device, calculate_accuracy=True)
-            print(f"Epoch {epoch + 1}/{num_epochs}, Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}")
-
+            val_acc, _ = evaluate(val_loader, model, device, calculate_accuracy=True)
+            print(f"Epoch {epoch + 1}/{num_epochs}, Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}, Val Acc: {val_acc:.4f}")
+            
             # Save logs for training progress
             train_losses.append(train_loss)
             train_accuracies.append(train_acc)
             logging.info(f"Epoch {epoch + 1}/{num_epochs}, Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}")
             
-            # Save best model
-            if train_acc > best_accuracy:
-                best_accuracy = train_acc
+            # Save the best model
+            if val_acc > best_val_accuracy:
+                best_val_accuracy = val_acc
+                epochs_without_improvement = 0
                 torch.save(model.state_dict(), best_checkpoint_path)
-                print(f"Best model updated and saved at {best_checkpoint_path}")
+                print(f"✅ Best model updated (Val Acc: {val_acc:.4f}) and saved at {best_checkpoint_path}")
             else:
                 epochs_without_improvement += 1
                 print(f"No improvement in validation accuracy for {epochs_without_improvement} epoch(s)")
