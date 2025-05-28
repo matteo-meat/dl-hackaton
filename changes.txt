@@ -1,0 +1,19 @@
+From the first submission I use the gnn class with the following parameters:
+    -num_layer = 5,
+    -emb_dim = 300, 
+    -gnn_type = 'gin', 
+    -virtual_node = True, 
+    -residual = False, 
+    -drop_ratio = 0.5, 
+    -JK = "last", 
+    -graph_pooling = "mean"
+
+For the second submission I set the following parameters:
+    -num_layer = 5,
+    -emb_dim = 512, 
+    -gnn_type = 'gin', 
+    -virtual_node = True, 
+    -residual = True, 
+    -drop_ratio = 0.5, 
+    -JK = "cat", 
+    -graph_pooling = "attention"
