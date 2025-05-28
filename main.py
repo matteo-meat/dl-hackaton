@@ -53,7 +53,7 @@ def evaluate(data_loader, model, device, calculate_accuracy=False):
             output = model(data)
             pred = output.argmax(dim=1)
             predictions.extend(pred.cpu().numpy())
-            labels.extend(data.y.numpy())
+            labels.extend(data.y.cpu().numpy())
             if calculate_accuracy:
                 correct += (pred == data.y).sum().item()
                 total += data.y.size(0)
