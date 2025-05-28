@@ -145,7 +145,7 @@ def main(args):
 
     # Prepare test dataset and loader
     test_dataset = GraphDataset(args.test_path, transform=init_features)
-    test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
+    test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False)
 
     # Train dataset and loader (if train_path is provided)
     if args.train_path:
@@ -157,8 +157,8 @@ def main(args):
         num_train = len(train_dataset) - num_val
         train_set, val_set = random_split(train_dataset, [num_train, num_val])
 
-        train_loader = DataLoader(train_set, batch_size=32, shuffle=True)
-        val_loader = DataLoader(val_set, batch_size=32, shuffle=False)
+        train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True)
+        val_loader = DataLoader(val_set, batch_size=args.batch_size, shuffle=False)
 
         # Training loop
         num_epochs = args.epochs
@@ -223,7 +223,7 @@ if __name__ == "__main__":
     parser.add_argument('--drop_ratio', type=float, default=0.5, help='dropout ratio (default: 0.5)')
     parser.add_argument('--num_layer', type=int, default=5, help='number of GNN message passing layers (default: 5)')
     parser.add_argument('--emb_dim', type=int, default=300, help='dimensionality of hidden units in GNNs (default: 300)')
-    # parser.add_argument('--batch_size', type=int, default=32, help='input batch size for training (default: 32)')
+    parser.add_argument('--batch_size', type=int, default=32, help='input batch size for training (default: 32)')
     parser.add_argument('--epochs', type=int, default=50, help='number of epochs to train (default: 50)')
     parser.add_argument('--patience', type=int, default=25, help='max number of epochs without training improvements (default: 25)')
     
