@@ -119,3 +119,40 @@ class GNN(torch.nn.Module):
         h_graph = self.pool(h_node, batched_data.batch)
 
         return self.graph_pred_linear(h_graph)
+    
+class SimpleGIN(torch.nn.Module):
+
+    def __init__(self, input_dim, hidden_dim, output_dim, drop_ratio = 0.5):
+        super(SimpleGIN, self).__init__()
+
+        self.drop_ratio = drop_ratio
+
+        self.conv1 = GINConv(
+            nn.Sequential(nn.Linear(input_dim, hidden_dim),
+                       nn.BatchNorm1d(hidden_dim), nn.ReLU(),
+                       nn.Linear(hidden_dim, hidden_dim), nn.ReLU()))
+        
+        self.conv1 = GINConv(
+            nn.Sequential(nn.Linear(hidden_dim, hidden_dim),
+                       nn.BatchNorm1d(hidden_dim), nn.ReLU(),
+                       nn.Linear(hidden_dim, hidden_dim), nn.ReLU()))
+
+        self.l1 = nn.Linear(hidden_dim * 3, hidden_dim * 3)
+        self.l2 = nn.Linear(hidden_dim * 3, output_dim)
+
+    def forward(self, data):
+        x, edge_index, batch = data.x, data.edge_index, data.batch
+        
+        h1 = self.conv1(x, edge_index)
+        h2 = self.conv2(h1, edge_index)
+
+        h1 = global_add_pool(h1, batch)
+        h2 = global_add_pool(h2, batch)
+
+        h = torch.cat((h1, h2), dim = 1)
+
+        h = nn.Relu(self.l1(h))
+        h = F.dropout(h, p = self.drop_ratio, training = self.training)
+        h = self.l2(h)
+
+        return h
