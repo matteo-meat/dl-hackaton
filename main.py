@@ -122,7 +122,7 @@ def main(args):
     elif args.gnn == 'gin':
          model = GIN(input_dim, hidden_dim, output_dim).to(device)
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.0001)
+    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
     criterion = torch.nn.CrossEntropyLoss()
 
     test_dir_name = os.path.basename(os.path.dirname(args.test_path))
