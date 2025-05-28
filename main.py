@@ -10,7 +10,7 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 
 from src.utils import set_seed
-from src.models import SimpleGCN, CulturalClassificationGNN
+from src.models import SimpleGCN, CulturalClassificationGNN, GNN
 from src.loadData import GraphDataset
 
 
@@ -119,7 +119,9 @@ def main(args):
          model = SimpleGCN(input_dim, hidden_dim, output_dim).to(device)
     elif args.gnn == 'mnlp':
          model = CulturalClassificationGNN(input_dim, hidden_dim, output_dim).to(device)
-
+    elif args.gnn == 'gin':
+        model = GNN(gnn_type = 'gin', num_class = output_dim, num_layer = args.num_layer, emb_dim = args.emb_dim, drop_ratio = args.drop_ratio, virtual_node = False).to(device)
+    
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
     criterion = torch.nn.CrossEntropyLoss()
 
@@ -152,7 +154,7 @@ def main(args):
         train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
 
         # Training loop
-        num_epochs = 50
+        num_epochs = args.epochs
         best_accuracy = 0.0
         train_losses = []
         train_accuracies = []
@@ -200,12 +202,12 @@ if __name__ == "__main__":
     parser.add_argument("--test_path", type=str, required=True, help="Path to the test dataset.")
     parser.add_argument("--num_checkpoints", type=int, help="Number of checkpoints to save during training.")
     # parser.add_argument('--device', type=int, default=1, help='which gpu to use if any (default: 0)')
-    parser.add_argument('--gnn', type=str, default='simple', help='GNN simple, mnlp (default: simple)')
-    # parser.add_argument('--drop_ratio', type=float, default=0.5, help='dropout ratio (default: 0.5)')
-    # parser.add_argument('--num_layer', type=int, default=5, help='number of GNN message passing layers (default: 5)')
-    # parser.add_argument('--emb_dim', type=int, default=300, help='dimensionality of hidden units in GNNs (default: 300)')
+    parser.add_argument('--gnn', type=str, default='simple', help='GNN simple, mnlp, gin(default: simple)')
+    parser.add_argument('--drop_ratio', type=float, default=0.5, help='dropout ratio (default: 0.5)')
+    parser.add_argument('--num_layer', type=int, default=5, help='number of GNN message passing layers (default: 5)')
+    parser.add_argument('--emb_dim', type=int, default=300, help='dimensionality of hidden units in GNNs (default: 300)')
     # parser.add_argument('--batch_size', type=int, default=32, help='input batch size for training (default: 32)')
-    # parser.add_argument('--epochs', type=int, default=10, help='number of epochs to train (default: 10)')
+    parser.add_argument('--epochs', type=int, default=10, help='number of epochs to train (default: 10)')
     
     args = parser.parse_args()
     main(args)
