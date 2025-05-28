@@ -9,6 +9,7 @@ import argparse
 import pandas as pd
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+from sklearn.metrics import f1_score
 
 from src.utils import set_seed
 from src.models import SimpleGCN, CulturalClassificationGNN, GNN
@@ -45,19 +46,21 @@ def evaluate(data_loader, model, device, calculate_accuracy=False):
     correct = 0
     total = 0
     predictions = []
+    labels = []
     with torch.no_grad():
         for data in tqdm(data_loader, desc="Iterating eval graphs", unit="batch"):
             data = data.to(device)
             output = model(data)
             pred = output.argmax(dim=1)
             predictions.extend(pred.cpu().numpy())
+            labels.extend(data.y.numpy())
             if calculate_accuracy:
                 correct += (pred == data.y).sum().item()
                 total += data.y.size(0)
     if calculate_accuracy:
         accuracy = correct / total
-        return accuracy, predictions
-    return predictions
+        return predictions, labels, accuracy
+    return predictions, labels
 
 def save_predictions(predictions, test_path):
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -77,28 +80,57 @@ def save_predictions(predictions, test_path):
     output_df.to_csv(output_csv_path, index=False)
     print(f"Predictions saved to {output_csv_path}")
 
-def plot_training_progress(train_losses, train_accuracies, output_dir):
+def plot_training_progress(train_losses, train_accuracies, train_f1s, val_accuracies, val_f1s, output_dir):
     epochs = range(1, len(train_losses) + 1)
-    plt.figure(figsize=(12, 6))
+    plt.figure(figsize=(18, 6))
 
-    # Plot loss
-    plt.subplot(1, 2, 1)
+    # Plot training loss
+    plt.subplot(1, 3, 1)
     plt.plot(epochs, train_losses, label="Training Loss", color='blue')
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
     plt.title('Training Loss per Epoch')
 
-    # Plot accuracy
-    plt.subplot(1, 2, 2)
+    # Plot training accuracy
+    plt.subplot(1, 3, 2)
     plt.plot(epochs, train_accuracies, label="Training Accuracy", color='green')
     plt.xlabel('Epoch')
     plt.ylabel('Accuracy')
     plt.title('Training Accuracy per Epoch')
 
+    # Plot training f1
+    plt.subplot(1, 3, 3)
+    plt.plot(epochs, train_f1s, label="Training F1 score", color='green')
+    plt.xlabel('Epoch')
+    plt.ylabel('F1 score')
+    plt.title('Training F1 score per Epoch')
+
     # Save plots in the current directory
     os.makedirs(output_dir, exist_ok=True)
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, "training_progress.png"))
+    plt.close()
+
+    plt.figure(figsize=(12, 6))
+
+    # Plot validation accuracy
+    plt.subplot(1, 2, 1)
+    plt.plot(epochs, val_accuracies, label="Validation Accuracy", color='green')
+    plt.xlabel('Epoch')
+    plt.ylabel('Accuracy')
+    plt.title('Validation Accuracy per Epoch')
+
+    # Plot validation f1
+    plt.subplot(1, 2, 2)
+    plt.plot(epochs, val_f1s, label="Validation F1 score", color='green')
+    plt.xlabel('Epoch')
+    plt.ylabel('F1 score')
+    plt.title('Validation F1 score per Epoch')
+
+    # Save plots in the current directory
+    os.makedirs(output_dir, exist_ok=True)
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, "validation_progress.png"))
     plt.close()
 
 
@@ -162,9 +194,14 @@ def main(args):
 
         # Training loop
         num_epochs = args.epochs
-        best_val_accuracy = 0.0
+
         train_losses = []
         train_accuracies = []
+        train_f1s = []
+        val_accuracies = []
+        val_f1s = []
+
+        best_val_f1 = 0.0
 
         # Calculate intervals for saving checkpoints
         if num_checkpoints > 1:
@@ -183,29 +220,36 @@ def main(args):
                 current_epoch=epoch
             )
 
-            train_acc, _ = evaluate(train_loader, model, device, calculate_accuracy=True)
-            val_acc, _ = evaluate(val_loader, model, device, calculate_accuracy=True)
-            print(f"Epoch {epoch + 1}/{num_epochs}, Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}, Val Acc: {val_acc:.4f}")
+            train_preds, train_labels, train_acc = evaluate(train_loader, model, device, calculate_accuracy=True)
+            val_preds, val_labels, val_acc = evaluate(val_loader, model, device, calculate_accuracy=True)
+
+            train_f1 = f1_score(train_labels, train_preds)
+            val_f1 = f1_score(val_labels, val_preds)
+
+            print(f"Epoch {epoch + 1}/{num_epochs}, Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}, Train F1: {train_f1:.4f}, Val Acc: {val_acc:.4f}, Val F1: {val_f1:.4f}")
 
             # Save logs for training progress
             train_losses.append(train_loss)
             train_accuracies.append(train_acc)
-            logging.info(f"Epoch {epoch + 1}/{num_epochs}, Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}")
+            train_f1s.append(train_f1)
+            val_accuracies.append(val_acc)
+            val_f1s.append(val_f1s)
+            logging.info(f"Epoch {epoch + 1}/{num_epochs}, Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}, Train F1: {train_f1:.4f}, Val Acc: {val_acc:.4f}, Val F1: {val_f1:.4f}")
             
             # Save best model
-            if val_acc > best_val_accuracy:
-                best_val_accuracy = val_acc
+            if val_f1 > best_val_f1:
+                best_val_f1 = val_f1
                 torch.save(model.state_dict(), best_checkpoint_path)
                 print(f"Best model updated and saved at {best_checkpoint_path}")
                 epochs_without_improvement = 0
             else:
                 epochs_without_improvement += 1
 
-            if epochs_without_improvement > patience:
+            if epochs_without_improvement >= patience:
                 print(f"Early stopping triggered after {epoch + 1} epochs!")
                 break
 
-        plot_training_progress(train_losses, train_accuracies, os.path.join(logs_folder, "plots"))
+        plot_training_progress(train_losses, train_accuracies, train_f1s, val_accuracies, val_f1s, os.path.join(logs_folder, "plots"))
 
     # Evaluate and save test predictions
     model.load_state_dict(torch.load(best_checkpoint_path))
