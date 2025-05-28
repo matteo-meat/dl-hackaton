@@ -154,7 +154,7 @@ def main(args):
         train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
 
         # Training loop
-        num_epochs = 50
+        num_epochs = 500
         best_accuracy = 0.0
         train_losses = []
         train_accuracies = []
@@ -165,7 +165,9 @@ def main(args):
         else:
             checkpoint_intervals = [num_epochs]
 
-        
+        patience = 20
+        epochs_without_improvement = 0
+
         for epoch in range(num_epochs):
             train_loss = train(
                 train_loader, model, optimizer, criterion, device,
@@ -187,7 +189,13 @@ def main(args):
                 best_accuracy = train_acc
                 torch.save(model.state_dict(), best_checkpoint_path)
                 print(f"Best model updated and saved at {best_checkpoint_path}")
+            else:
+                epochs_without_improvement += 1
+                print(f"No improvement in validation accuracy for {epochs_without_improvement} epoch(s)")
 
+            if epochs_without_improvement >= patience:
+                print(f"🛑 Early stopping triggered after {epoch + 1} epochs!")
+                break
         plot_training_progress(train_losses, train_accuracies, os.path.join(logs_folder, "plots"))
 
     # Evaluate and save test predictions
