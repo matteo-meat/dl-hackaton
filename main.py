@@ -11,24 +11,29 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 
 from src.utils import set_seed
-from src.models import SimpleGCN, CulturalClassificationGNN, GIN
+from src.models import SimpleGCN, CulturalClassificationGNN, GIN, paperGIN, RobustGIN
 from src.loadData import GraphDataset
 
 
-def init_features(data):
-    # data.x = torch.zeros(data.num_nodes, dtype=torch.long)
-    x = torch.arange(data.num_nodes).unsqueeze(1).float()
-    data.x = x
-    return data
-# def add_degrees(data):
-#     deg = torch.bincount(data.edge_index[0], minlength=data.num_nodes).float().unsqueeze(1)
-#     noise = torch.randn_like(deg) * 0.05  # small noise for variability
-#     data.x = deg + noise
+# def init_features(data):
+#     # data.x = torch.zeros(data.num_nodes, dtype=torch.long)
+#     data.x = torch.arange(data.num_nodes)
 #     return data
+def init_features(data):
+    deg = torch.bincount(data.edge_index[0], minlength=data.num_nodes).unsqueeze(1).float()
+    noise = torch.randn_like(deg) * 0.1
+    data.x = deg + noise
+    return data
 
 
+# def label_smoothness_loss(predictions, edge_index):
+#     row, col = edge_index
+#     diff = predictions[row] - predictions[col]
+#     loss = torch.mean(torch.norm(diff, p=2, dim=1))
+#     return loss
 
-def train(data_loader, model, optimizer, criterion, device, save_checkpoints, checkpoint_path, current_epoch):
+
+def train(data_loader, model, optimizer, criterion, device, save_checkpoints, checkpoint_path, current_epoch, alpha = 0.2):
     model.train()
     total_loss = 0
     for data in tqdm(data_loader, desc="Iterating training graphs", unit="batch"):
@@ -36,6 +41,8 @@ def train(data_loader, model, optimizer, criterion, device, save_checkpoints, ch
         optimizer.zero_grad()
         output = model(data)
         loss = criterion(output, data.y)
+        #loss_smooth = label_smoothness_loss(node_logits, data.edge_index)
+        #loss = loss_cls + alpha*loss_smooth
         loss.backward()
         optimizer.step()
         total_loss += loss.item()
@@ -56,7 +63,7 @@ def evaluate(data_loader, model, device, calculate_accuracy=False):
     with torch.no_grad():
         for data in tqdm(data_loader, desc="Iterating eval graphs", unit="batch"):
             data = data.to(device)
-            output = model(data)
+            output= model(data)
             pred = output.argmax(dim=1)
             predictions.extend(pred.cpu().numpy())
             if calculate_accuracy:
@@ -109,13 +116,12 @@ def plot_training_progress(train_losses, train_accuracies, output_dir):
     plt.savefig(os.path.join(output_dir, "training_progress.png"))
     plt.close()
 
-
 def main(args):
 
     set_seed()
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     # Parameters for the GCN model
-    input_dim = 300  # Example input feature dimension (you can adjust this)
+    input_dim = 1  # Example input feature dimension (you can adjust this)
     hidden_dim = 64
     output_dim = 6  # Number of classes
 
@@ -129,6 +135,10 @@ def main(args):
          model = CulturalClassificationGNN(input_dim, hidden_dim, output_dim).to(device)
     elif args.gnn == 'gin':
          model = GIN(input_dim, hidden_dim, output_dim).to(device)
+    elif args.gnn == 'papergin':
+         model = paperGIN(input_dim, hidden_dim, output_dim).to(device)
+    elif args.gnn == 'robgin':
+         model = RobustGIN(input_dim, hidden_dim, output_dim).to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
     criterion = torch.nn.CrossEntropyLoss(label_smoothing=0.1)
@@ -180,7 +190,7 @@ def main(args):
             checkpoint_intervals = [num_epochs]
 
                                                         ###### TRAIN LOOP #####        
-        patience = 10
+        patience = 30
         epochs_without_improvement = 0
         best_val_accuracy = 0.0
         train_losses = []
