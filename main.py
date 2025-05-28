@@ -165,6 +165,8 @@ def main(args):
         else:
             checkpoint_intervals = [num_epochs]
 
+        patience = args.patience
+        epochs_without_improvement = 0
         
         for epoch in range(num_epochs):
             train_loss = train(
@@ -187,6 +189,12 @@ def main(args):
                 best_accuracy = train_acc
                 torch.save(model.state_dict(), best_checkpoint_path)
                 print(f"Best model updated and saved at {best_checkpoint_path}")
+            else:
+                epochs_without_improvement += 1
+
+            if epochs_without_improvement > patience:
+                print(f"Early stopping triggered after {epoch + 1} epochs!")
+                break
 
         plot_training_progress(train_losses, train_accuracies, os.path.join(logs_folder, "plots"))
 
@@ -207,7 +215,8 @@ if __name__ == "__main__":
     parser.add_argument('--num_layer', type=int, default=5, help='number of GNN message passing layers (default: 5)')
     parser.add_argument('--emb_dim', type=int, default=300, help='dimensionality of hidden units in GNNs (default: 300)')
     # parser.add_argument('--batch_size', type=int, default=32, help='input batch size for training (default: 32)')
-    parser.add_argument('--epochs', type=int, default=10, help='number of epochs to train (default: 10)')
+    parser.add_argument('--epochs', type=int, default=50, help='number of epochs to train (default: 50)')
+    parser.add_argument('--patience', type=int, default=25, help='max number of epochs without training improvements (default: 25)')
     
     args = parser.parse_args()
     main(args)
