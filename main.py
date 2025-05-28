@@ -188,6 +188,7 @@ def main(args):
                 best_accuracy = train_acc
                 torch.save(model.state_dict(), best_checkpoint_path)
                 print(f"Best model updated and saved at {best_checkpoint_path}")
+                epochs_without_improvement = 0
             else:
                 epochs_without_improvement += 1
 
