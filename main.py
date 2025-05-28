@@ -1,5 +1,6 @@
 
-import torch 
+import torch
+from torch.utils.data import random_split
 from torch_geometric.loader import DataLoader
 
 import os
@@ -150,11 +151,18 @@ def main(args):
     if args.train_path:
 
         train_dataset = GraphDataset(args.train_path, transform=init_features)
-        train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+
+        val_ratio = 0.2
+        num_val = int(len(train_dataset) * val_ratio)
+        num_train = len(train_dataset) - num_val
+        train_set, val_set = random_split(train_dataset, [num_train, num_val])
+
+        train_loader = DataLoader(train_set, batch_size=32, shuffle=True)
+        val_loader = DataLoader(val_set, batch_size=32, shuffle=False)
 
         # Training loop
         num_epochs = args.epochs
-        best_accuracy = 0.0
+        best_val_accuracy = 0.0
         train_losses = []
         train_accuracies = []
 
@@ -176,7 +184,8 @@ def main(args):
             )
 
             train_acc, _ = evaluate(train_loader, model, device, calculate_accuracy=True)
-            print(f"Epoch {epoch + 1}/{num_epochs}, Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}")
+            val_acc, _ = evaluate(val_loader, model, device, calculate_accuracy=True)
+            print(f"Epoch {epoch + 1}/{num_epochs}, Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}, Val Acc: {val_acc:.4f}")
 
             # Save logs for training progress
             train_losses.append(train_loss)
@@ -184,8 +193,8 @@ def main(args):
             logging.info(f"Epoch {epoch + 1}/{num_epochs}, Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}")
             
             # Save best model
-            if train_acc > best_accuracy:
-                best_accuracy = train_acc
+            if val_acc > best_val_accuracy:
+                best_val_accuracy = val_acc
                 torch.save(model.state_dict(), best_checkpoint_path)
                 print(f"Best model updated and saved at {best_checkpoint_path}")
                 epochs_without_improvement = 0
