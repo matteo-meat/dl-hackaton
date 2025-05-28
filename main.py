@@ -14,6 +14,9 @@ from src.utils import set_seed
 from src.models import SimpleGCN, CulturalClassificationGNN, GNN
 from src.loadData import GraphDataset
 
+import torch_xla
+import torch_xla.core.xla_model as xm
+
 
 def init_features(data):
     data.x = torch.zeros(data.num_nodes, dtype=torch.long)
@@ -105,7 +108,8 @@ def plot_training_progress(train_losses, train_accuracies, output_dir):
 def main(args):
 
     set_seed()
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = xm.xla_device()
     # Parameters for the GCN model
     input_dim = 300  # Example input feature dimension (you can adjust this)
     hidden_dim = 64
