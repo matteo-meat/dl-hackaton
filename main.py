@@ -182,7 +182,7 @@ def main(args):
         model = SimpleGINE(hidden_dim, output_dim, args.drop_ratio).to(device)
     
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-    criterion = torch.nn.CrossEntropyLoss()
+    criterion = torch.nn.CrossEntropyLoss(label_smoothing = 0.2)
 
     test_dir_name = os.path.basename(os.path.dirname(args.test_path))
 
