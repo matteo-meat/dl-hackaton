@@ -182,8 +182,8 @@ class SimpleGINE(torch.nn.Module):
         
         self.conv2 = GINEConv(nn2, edge_dim = 7)
 
-        self.l1 = nn.Linear(hidden_dim * 3, hidden_dim * 3)
-        self.l2 = nn.Linear(hidden_dim * 3, output_dim)
+        self.l1 = nn.Linear(hidden_dim, hidden_dim)
+        self.l2 = nn.Linear(hidden_dim, output_dim)
 
     def forward(self, data):
         x, edge_index, edge_attr, batch = data.x, data.edge_index, data.edge_attr, data.batch
