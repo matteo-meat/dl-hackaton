@@ -268,7 +268,7 @@ def main(args):
 
     # Evaluate and save test predictions
     model.load_state_dict(torch.load(best_checkpoint_path))
-    predictions = evaluate(test_loader, model, device, calculate_accuracy=False)
+    predictions, _, _ = evaluate(test_loader, model, criterion, device, calculate_accuracy=False)
     save_predictions(predictions, args.test_path)
 
 
