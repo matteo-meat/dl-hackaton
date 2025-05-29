@@ -132,13 +132,13 @@ class SimpleGIN(torch.nn.Module):
         nn1 = nn.Sequential(nn.Linear(hidden_dim, hidden_dim),
                     nn.BatchNorm1d(hidden_dim), nn.ReLU(),
                     nn.Linear(hidden_dim, hidden_dim), nn.ReLU())
-        self.conv1 = GINConv(nn1)
+        self.conv1 = GINConv(nn1, edge_dim = 7)
 
         nn2 = nn.Sequential(nn.Linear(hidden_dim, hidden_dim),
                     nn.BatchNorm1d(hidden_dim), nn.ReLU(),
                     nn.Linear(hidden_dim, hidden_dim), nn.ReLU())
         
-        self.conv2 = GINConv(nn2)
+        self.conv2 = GINConv(nn2, edge_dim = 7)
 
         self.l1 = nn.Linear(hidden_dim * 3, hidden_dim * 3)
         self.l2 = nn.Linear(hidden_dim * 3, output_dim)
@@ -174,13 +174,13 @@ class SimpleGINE(torch.nn.Module):
         nn1 = nn.Sequential(nn.Linear(hidden_dim, hidden_dim),
                     nn.BatchNorm1d(hidden_dim), nn.ReLU(),
                     nn.Linear(hidden_dim, hidden_dim), nn.ReLU())
-        self.conv1 = GINEConv(nn1)
+        self.conv1 = GINEConv(nn1, edge_dim = 7)
 
         nn2 = nn.Sequential(nn.Linear(hidden_dim, hidden_dim),
                     nn.BatchNorm1d(hidden_dim), nn.ReLU(),
                     nn.Linear(hidden_dim, hidden_dim), nn.ReLU())
         
-        self.conv2 = GINEConv(nn2)
+        self.conv2 = GINEConv(nn2, edge_dim = 7)
 
         self.l1 = nn.Linear(hidden_dim * 3, hidden_dim * 3)
         self.l2 = nn.Linear(hidden_dim * 3, output_dim)
