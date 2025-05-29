@@ -34,8 +34,11 @@ class GCODLoss(Module):
             # Map to local indices
             global_to_local = {idx.item(): i for i, idx in enumerate(local_node_idx)}
             edge_index_i = edge_index_i.clone()
-            edge_index_i[0] = edge_index_i[0].apply_(lambda x: global_to_local[x.item()])
-            edge_index_i[1] = edge_index_i[1].apply_(lambda x: global_to_local[x.item()])
+            edge_index_i = edge_index_i.clone()
+            edge_index_i = torch.stack([
+                torch.tensor([global_to_local[idx.item()] for idx in edge_index_i[0]], device=edge_index.device),
+                torch.tensor([global_to_local[idx.item()] for idx in edge_index_i[1]], device=edge_index.device)
+            ], dim=0)
 
             # Skip empty graph
             if x_i.size(0) == 0 or edge_index_i.size(1) == 0:
