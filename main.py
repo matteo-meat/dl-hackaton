@@ -30,52 +30,94 @@ def init_features(data):
 def train(data_loader, model, optimizer, criterion, device, save_checkpoints, checkpoint_path, current_epoch):
     model.train()
     total_loss = 0
+    total_ce = 0
+    total_dirichlet = 0
     for data in tqdm(data_loader, desc="Iterating training graphs", unit="batch"):
-        # data = data.to(device)
-        # optimizer.zero_grad()
-        # output = model(data)
-        # loss = criterion(output, data.y)
-        # loss.backward()
-        # optimizer.step()
-        # total_loss += loss.item()
-
         data = data.to(device)
         optimizer.zero_grad()
         output = model(data)
         #loss = criterion(output, data.y)
-        loss = criterion(output, data.y, data.x, data.edge_index, data.batch)
+        loss, ce_loss, dirichlet = criterion(output, data.y, data.x, data.edge_index, data.batch, return_components=True)       
         loss.backward()
         optimizer.step()
         total_loss += loss.item()
+        total_ce += ce_loss.item()
+        total_dirichlet += dirichlet.item()
 
     if save_checkpoints:
         checkpoint_file = f"{checkpoint_path}_epoch_{current_epoch + 1}.pth"
         torch.save(model.state_dict(), checkpoint_file)
         print(f"Checkpoint saved at {checkpoint_file}")
-    
-    return total_loss / len(data_loader)
+
+        num_batches = len(data_loader)
+        avg_loss = total_loss / num_batches
+        avg_ce = total_ce / num_batches
+        avg_dirichlet = total_dirichlet / num_batches
+
+    return avg_loss, avg_ce, avg_dirichlet
 
 
-def evaluate(data_loader, model, device, calculate_accuracy=False):
+# def evaluate(data_loader, model, device, calculate_accuracy=False):
+#     model.eval()
+#     correct = 0
+#     total = 0
+#     predictions = []
+#     true_labels = []
+#     with torch.no_grad():
+#         for data in tqdm(data_loader, desc="Iterating eval graphs", unit="batch"):
+#             data = data.to(device)
+#             output = model(data)
+#             pred = output.argmax(dim=1)
+#             predictions.extend(pred.cpu().numpy())
+#             true_labels.extend(data.y.cpu().tolist())
+#             if calculate_accuracy:
+#                 correct += (pred == data.y).sum().item()
+#                 total += data.y.size(0)
+#     if calculate_accuracy:
+#         accuracy = correct / total
+#         return accuracy, predictions, true_labels
+#     return predictions, true_labels
+
+def evaluate(data_loader, model, device, criterion=None, calculate_accuracy=False):
     model.eval()
     correct = 0
     total = 0
     predictions = []
     true_labels = []
+    
+    total_loss = 0.0
+    total_ce = 0.0
+    total_dirichlet = 0.0
+    num_batches = 0
+
     with torch.no_grad():
         for data in tqdm(data_loader, desc="Iterating eval graphs", unit="batch"):
             data = data.to(device)
             output = model(data)
             pred = output.argmax(dim=1)
+
             predictions.extend(pred.cpu().numpy())
             true_labels.extend(data.y.cpu().tolist())
+
             if calculate_accuracy:
                 correct += (pred == data.y).sum().item()
                 total += data.y.size(0)
-    if calculate_accuracy:
-        accuracy = correct / total
-        return accuracy, predictions, true_labels
-    return predictions, true_labels
+
+            if criterion is not None:
+                loss, ce_loss, dirichlet = criterion(
+                    output, data.y, data.x, data.edge_index, data.batch, return_components=True
+                )
+                total_loss += loss.item()
+                total_ce += ce_loss.item()
+                total_dirichlet += dirichlet.item()
+                num_batches += 1
+
+    accuracy = correct / total if calculate_accuracy else None
+    avg_loss = total_loss / num_batches if num_batches > 0 else None
+    avg_ce = total_ce / num_batches if num_batches > 0 else None
+    avg_dirichlet = total_dirichlet / num_batches if num_batches > 0 else None
+
+    return accuracy, predictions, true_labels, avg_loss, avg_ce, avg_dirichlet
 
 def save_predictions(predictions, test_path):
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -189,8 +231,14 @@ def main(args):
         val_loader = DataLoader(val_set, batch_size=64, shuffle=False )
 
         # Training loop
-        num_epochs = 500
-        best_accuracy = 0.0
+        num_epochs = 500        
+        patience = 30
+        epochs_without_improvement = 0
+        best_val_f1 = 0.0
+        best_val_loss = 0.0
+        best_val_dirichlet = 0.0
+        train_losses = []
+        train_accuracies = []
         train_losses = []
         train_accuracies = []
 
@@ -200,14 +248,10 @@ def main(args):
         else:
             checkpoint_intervals = [num_epochs]
 
-        patience = 30
-        epochs_without_improvement = 0
-        best_val_f1 = 0.0
-        train_losses = []
-        train_accuracies = []
+
 
         for epoch in range(num_epochs):
-            train_loss = train(
+            train_loss, train_ce, train_dirichlet = train(
                 train_loader, model, optimizer, criterion, device,
                 save_checkpoints=(epoch + 1 in checkpoint_intervals),
                 checkpoint_path=os.path.join(checkpoints_folder, f"model_{test_dir_name}"),
@@ -215,9 +259,12 @@ def main(args):
             )
 
             train_acc, _, _ = evaluate(train_loader, model, device, calculate_accuracy=True)
-            val_acc, val_preds, val_labels = evaluate(val_loader, model, device, calculate_accuracy=True)
+            val_acc, val_preds, val_labels, val_loss, val_ce, val_dirichlet = evaluate(
+                val_loader, model, device, criterion=criterion, calculate_accuracy=True
+            )            
             val_f1 = f1_score(val_labels, val_preds, average='macro')  
-            print(f"Epoch {epoch + 1}/{num_epochs}, Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}, Val Acc: {val_acc:.4f}", f"Val F1: {val_f1:.4f}")
+            print(f"Epoch {epoch + 1}/{num_epochs}, Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}, Val Acc: {val_acc:.4f}, Val F1: {val_f1:.4f}, CE: {train_ce:.4f}, Train Dirichlet: {train_dirichlet:.4f}, Val CE: {val_ce:.4f}, Val Dirichlet: {val_dirichlet:.4f}")
+
             
             # Save logs for training progress
             train_losses.append(train_loss)
@@ -225,11 +272,12 @@ def main(args):
             logging.info(f"Epoch {epoch + 1}/{num_epochs}, Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}")
             
             # Save the best model
-            if val_f1 > best_val_f1:
-                best_val_f1 = val_f1
+            if val_loss < best_val_loss and val_dirichlet < best_val_dirichlet:
+                best_val_loss = val_loss
+                best_val_dirichlet = val_dirichlet
                 epochs_without_improvement = 0
                 torch.save(model.state_dict(), best_checkpoint_path)
-                print(f"✅ Best model updated (Val Acc: {val_acc:.4f}) and saved at {best_checkpoint_path}")
+                print(f"✅ Best model updated (Val Acc: {val_acc:.4f}) Val Dirichlet: {val_dirichlet:.4f} and saved at {best_checkpoint_path}")
             else:
                 epochs_without_improvement += 1
                 print(f"No improvement in validation accuracy for {epochs_without_improvement} epoch(s)")

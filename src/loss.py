@@ -9,10 +9,15 @@ class GCODLoss(Module):
         super().__init__()
         self.lambda_smoothness = lambda_smoothness
 
-    def forward(self, logits, labels, x, edge_index, batch):
+    def forward(self, logits, labels, x, edge_index, batch, return_components=False):
         ce_loss = F.cross_entropy(logits, labels)
         smoothness_loss = self.compute_dirichlet_energy(x, edge_index, batch)
-        return ce_loss + self.lambda_smoothness * smoothness_loss
+        total_loss = ce_loss + self.lambda_smoothness * smoothness_loss
+
+        if return_components:
+            return total_loss, ce_loss.detach(), smoothness_loss.detach()
+        return total_loss
+
 
     def compute_dirichlet_energy(self, x, edge_index, batch):
         dirichlet = 0.0
