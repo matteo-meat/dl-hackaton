@@ -124,26 +124,32 @@ def plot_training_progress(train_losses, train_accuracies, train_f1s, val_losses
     print("Plotting evaluation process...")
     plt.figure(figsize=(18, 6))
 
+    print("Plotting validation loss...")
     # Plot validation loss
     plt.subplot(1, 3, 1)
     plt.plot(epochs, val_losses, label="Validation Loss", color='blue')
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
     plt.title('Validation Loss per Epoch')
+    print("Validation loss plotted!")
 
+    print("Plotting validation accuracy...")
     # Plot validation accuracy
     plt.subplot(1, 3, 2)
     plt.plot(epochs, val_accuracies, label="Validation Accuracy", color='green')
     plt.xlabel('Epoch')
     plt.ylabel('Accuracy')
     plt.title('Validation Accuracy per Epoch')
+    print("Validation accuracy plotted!")
 
+    print("Plotting validation f1...")
     # Plot validation f1
     plt.subplot(1, 3, 3)
     plt.plot(epochs, val_f1s, label="Validation F1 score", color='green')
     plt.xlabel('Epoch')
     plt.ylabel('F1 score')
     plt.title('Validation F1 score per Epoch')
+    print("Validation f1 plotted!")
 
     # Save plots in the current directory
     os.makedirs(output_dir, exist_ok=True)
