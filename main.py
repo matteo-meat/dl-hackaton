@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 
 from src.utils import set_seed
 from src.models import SimpleGCN, CulturalClassificationGNN, GIN, SLGAT, GNN
+from src.loss import GCODLoss
 from src.loadData import GraphDataset
 from sklearn.metrics import f1_score
 
@@ -41,9 +42,8 @@ def train(data_loader, model, optimizer, criterion, device, save_checkpoints, ch
         data = data.to(device)
         optimizer.zero_grad()
         output = model(data)
-        loss = criterion(output, data.y)
-        #sparsity_loss = model.struct_learner.loss()
-        #loss = sup_loss + sparsity_loss 
+        #loss = criterion(output, data.y)
+        loss = criterion(output, data.y, data.x, data.edge_index, data.batch)
         loss.backward()
         optimizer.step()
         total_loss += loss.item()
@@ -146,7 +146,9 @@ def main(args):
          model = GNN(num_class=output_dim, emb_dim=input_dim, residual=True, graph_pooling='attention', JK='last').to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-    criterion = torch.nn.CrossEntropyLoss()
+    #criterion = torch.nn.CrossEntropyLoss()
+    criterion = GCODLoss(lambda_smoothness=0.1)
+
 
     test_dir_name = os.path.basename(os.path.dirname(args.test_path))
 
