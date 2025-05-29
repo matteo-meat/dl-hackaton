@@ -74,7 +74,7 @@ def evaluate(data_loader, model, device, calculate_accuracy=False):
                 total += data.y.size(0)
     if calculate_accuracy:
         accuracy = correct / total
-        return accuracy, predictions
+        return accuracy, predictions, true_labels
     return predictions, true_labels
 
 def save_predictions(predictions, test_path):
