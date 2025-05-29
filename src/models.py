@@ -144,12 +144,12 @@ class SimpleGIN(torch.nn.Module):
         self.l2 = nn.Linear(hidden_dim * 3, output_dim)
 
     def forward(self, data):
-        x, edge_index, batch = data.x, data.edge_index, data.batch
+        x, edge_index, edge_attr, batch = data.x, data.edge_index, data.edge_attr, data.batch
 
         x = self.node_embedding(x)
         
-        h1 = self.conv1(x, edge_index)
-        h2 = self.conv2(h1, edge_index)
+        h1 = self.conv1(x, edge_index, edge_attr)
+        h2 = self.conv2(h1, edge_index, edge_attr)
 
         h1 = global_add_pool(h1, batch)
         h2 = global_add_pool(h2, batch)
@@ -186,12 +186,12 @@ class SimpleGINE(torch.nn.Module):
         self.l2 = nn.Linear(hidden_dim * 3, output_dim)
 
     def forward(self, data):
-        x, edge_index, batch = data.x, data.edge_index, data.batch
+        x, edge_index, edge_attr, batch = data.x, data.edge_index, data.edge_attr, data.batch
 
         x = self.node_embedding(x)
         
-        h1 = self.conv1(x, edge_index)
-        h2 = self.conv2(h1, edge_index)
+        h1 = self.conv1(x, edge_index, edge_attr)
+        h2 = self.conv2(h1, edge_index, edge_attr)
 
         h1 = global_add_pool(h1, batch)
         h2 = global_add_pool(h2, batch)
