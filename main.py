@@ -35,89 +35,91 @@ def train(data_loader, model, optimizer, criterion, device, save_checkpoints, ch
     for data in tqdm(data_loader, desc="Iterating training graphs", unit="batch"):
         data = data.to(device)
         optimizer.zero_grad()
-        output = model(data)
-        #loss = criterion(output, data.y)
-        loss, ce_loss, dirichlet = criterion(output, data.y, data.x, data.edge_index, data.batch, return_components=True)       
+        output, logits = model(data)
+        loss = criterion(output, data.y)
+        #loss, ce_loss, dirichlet = criterion(output, data.y, logits, data.edge_index, data.batch, return_components=True)       
         loss.backward()
         optimizer.step()
         total_loss += loss.item()
-        total_ce += ce_loss.item()
-        total_dirichlet += dirichlet.item()
-
-    if save_checkpoints:
-        checkpoint_file = f"{checkpoint_path}_epoch_{current_epoch + 1}.pth"
-        torch.save(model.state_dict(), checkpoint_file)
-        print(f"Checkpoint saved at {checkpoint_file}")
+        # total_ce += ce_loss.item()
+        # total_dirichlet += dirichlet.item()
 
         num_batches = len(data_loader)
         avg_loss = total_loss / num_batches
         avg_ce = total_ce / num_batches
         avg_dirichlet = total_dirichlet / num_batches
 
-    return avg_loss, avg_ce, avg_dirichlet
+    if save_checkpoints:
+        checkpoint_file = f"{checkpoint_path}_epoch_{current_epoch + 1}.pth"
+        torch.save(model.state_dict(), checkpoint_file)
+        print(f"Checkpoint saved at {checkpoint_file}")
+
+    #return avg_loss, avg_ce, avg_dirichlet
+    return total_loss
 
 
-# def evaluate(data_loader, model, device, calculate_accuracy=False):
-#     model.eval()
-#     correct = 0
-#     total = 0
-#     predictions = []
-#     true_labels = []
-#     with torch.no_grad():
-#         for data in tqdm(data_loader, desc="Iterating eval graphs", unit="batch"):
-#             data = data.to(device)
-#             output = model(data)
-#             pred = output.argmax(dim=1)
-#             predictions.extend(pred.cpu().numpy())
-#             true_labels.extend(data.y.cpu().tolist())
-#             if calculate_accuracy:
-#                 correct += (pred == data.y).sum().item()
-#                 total += data.y.size(0)
-#     if calculate_accuracy:
-#         accuracy = correct / total
-#         return accuracy, predictions, true_labels
-#     return predictions, true_labels
-
-def evaluate(data_loader, model, device, criterion=None, calculate_accuracy=False):
+def evaluate(data_loader, model, device, calculate_accuracy=False):
     model.eval()
     correct = 0
     total = 0
     predictions = []
     true_labels = []
-    
-    total_loss = 0.0
-    total_ce = 0.0
-    total_dirichlet = 0.0
-    num_batches = 0
-
     with torch.no_grad():
         for data in tqdm(data_loader, desc="Iterating eval graphs", unit="batch"):
             data = data.to(device)
-            output = model(data)
+            output, _ = model(data)
             pred = output.argmax(dim=1)
-
             predictions.extend(pred.cpu().numpy())
             true_labels.extend(data.y.cpu().tolist())
-
             if calculate_accuracy:
                 correct += (pred == data.y).sum().item()
                 total += data.y.size(0)
+    if calculate_accuracy:
+        accuracy = correct / total
+        return accuracy, predictions, true_labels
+    return predictions, true_labels
 
-            if criterion is not None:
-                loss, ce_loss, dirichlet = criterion(
-                    output, data.y, data.x, data.edge_index, data.batch, return_components=True
-                )
-                total_loss += loss.item()
-                total_ce += ce_loss.item()
-                total_dirichlet += dirichlet.item()
-                num_batches += 1
+# def evaluate(data_loader, model, device, criterion=None, calculate_accuracy=False):
+#     model.eval()
+#     correct = 0
+#     total = 0
+#     predictions = []
+#     true_labels = []
+    
+#     total_loss = 0.0
+#     total_ce = 0.0
+#     total_dirichlet = 0.0
+#     num_batches = 0
 
-    accuracy = correct / total if calculate_accuracy else None
-    avg_loss = total_loss / num_batches if num_batches > 0 else None
-    avg_ce = total_ce / num_batches if num_batches > 0 else None
-    avg_dirichlet = total_dirichlet / num_batches if num_batches > 0 else None
+#     with torch.no_grad():
+#         for data in tqdm(data_loader, desc="Iterating eval graphs", unit="batch"):
+#             data = data.to(device)
+#             output, logits = model(data)
+#             pred = output.argmax(dim=1)
 
-    return accuracy, predictions, true_labels, avg_loss, avg_ce, avg_dirichlet
+#             predictions.extend(pred.cpu().numpy())
+#             true_labels.extend(data.y.cpu().tolist())
+
+#             if calculate_accuracy:
+#                 correct += (pred == data.y).sum().item()
+#                 total += data.y.size(0)
+
+#             if criterion is not None:
+#                 loss, ce_loss, dirichlet = criterion(
+#                     output, data.y, logits, data.edge_index, data.batch, return_components=True
+#                 )
+#                 total_loss += loss.item()
+#                 total_ce += ce_loss.item()
+#                 total_dirichlet += dirichlet.item()
+#                 num_batches += 1
+
+#     accuracy = correct / total if calculate_accuracy else None
+#     avg_loss = total_loss / num_batches if num_batches > 0 else None
+#     avg_ce = total_ce / num_batches if num_batches > 0 else None
+#     avg_dirichlet = total_dirichlet / num_batches if num_batches > 0 else None
+
+#     #return accuracy, predictions, true_labels, avg_loss, avg_ce, avg_dirichlet
+#     return accuracy, predictions, true_labels
 
 def save_predictions(predictions, test_path):
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -178,7 +180,7 @@ def main(args):
     # Initialize the model, optimizer, and loss criterion
     if args.gnn == 'simple':
          model = SimpleGCN(input_dim, hidden_dim, output_dim).to(device)
-    elif args.gnn == 'gine':
+    elif args.gnn == 'simple_gine':
          model = SimpleGINE(hidden_dim, output_dim).to(device)
     elif args.gnn == 'gin':
          model = GIN(input_dim, hidden_dim, output_dim).to(device)
@@ -188,8 +190,8 @@ def main(args):
          model = GNN(num_class=output_dim, emb_dim=input_dim, residual=True, graph_pooling='attention', JK='last').to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-    #criterion = torch.nn.CrossEntropyLoss()
-    criterion = GCODLoss(lambda_smoothness=0.1)
+    criterion = torch.nn.CrossEntropyLoss()
+    #criterion = GCODLoss(lambda_smoothness=0.1)
 
 
     test_dir_name = os.path.basename(os.path.dirname(args.test_path))
@@ -231,8 +233,8 @@ def main(args):
         val_loader = DataLoader(val_set, batch_size=64, shuffle=False )
 
         # Training loop
-        num_epochs = 500        
-        patience = 30
+        num_epochs = 700        
+        patience = 25
         epochs_without_improvement = 0
         best_val_f1 = 0.0
         best_val_loss = 0.0
@@ -251,33 +253,36 @@ def main(args):
 
 
         for epoch in range(num_epochs):
-            train_loss, train_ce, train_dirichlet = train(
+            train_loss = train(
                 train_loader, model, optimizer, criterion, device,
                 save_checkpoints=(epoch + 1 in checkpoint_intervals),
                 checkpoint_path=os.path.join(checkpoints_folder, f"model_{test_dir_name}"),
                 current_epoch=epoch
             )
 
+            #train_acc, _, _, _, _, _ = evaluate(train_loader, model, device, calculate_accuracy=True)
             train_acc, _, _ = evaluate(train_loader, model, device, calculate_accuracy=True)
-            val_acc, val_preds, val_labels, val_loss, val_ce, val_dirichlet = evaluate(
-                val_loader, model, device, criterion=criterion, calculate_accuracy=True
-            )            
+            # val_acc, val_preds, val_labels, val_loss, val_ce, val_dirichlet = evaluate(
+            #     val_loader, model, device, criterion=criterion, calculate_accuracy=True
+            # )  
+            val_acc, val_preds, val_labels = evaluate(
+                val_loader, model, device, calculate_accuracy=True
+            )           
             val_f1 = f1_score(val_labels, val_preds, average='macro')  
-            print(f"Epoch {epoch + 1}/{num_epochs}, Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}, Val Acc: {val_acc:.4f}, Val F1: {val_f1:.4f}, CE: {train_ce:.4f}, Train Dirichlet: {train_dirichlet:.4f}, Val CE: {val_ce:.4f}, Val Dirichlet: {val_dirichlet:.4f}")
+            # print(f"Epoch {epoch + 1}/{num_epochs}, Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}, VAL ACC: {val_acc:.4f}, F1_SCORE: {val_f1:.4f}, CE: {train_ce:.4f}, Val CE: {val_ce:.4f}, Val Dirichlet: {val_dirichlet:.4f}")
+            print(f"Epoch {epoch + 1}/{num_epochs}, Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}, VAL ACC: {val_acc:.4f}, F1_SCORE: {val_f1:.4f}")
 
             
             # Save logs for training progress
             train_losses.append(train_loss)
             train_accuracies.append(train_acc)
-            logging.info(f"Epoch {epoch + 1}/{num_epochs}, Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}")
             
             # Save the best model
-            if val_loss < best_val_loss and val_dirichlet < best_val_dirichlet:
-                best_val_loss = val_loss
-                best_val_dirichlet = val_dirichlet
+            if val_f1 > best_val_f1:
+                best_val_f1 = val_f1
                 epochs_without_improvement = 0
                 torch.save(model.state_dict(), best_checkpoint_path)
-                print(f"✅ Best model updated (Val Acc: {val_acc:.4f}) Val Dirichlet: {val_dirichlet:.4f} and saved at {best_checkpoint_path}")
+                print(f"✅ Best model updated (Val Acc: {val_acc:.4f}) and saved at {best_checkpoint_path}")
             else:
                 epochs_without_improvement += 1
                 print(f"No improvement in validation accuracy for {epochs_without_improvement} epoch(s)")
@@ -289,7 +294,7 @@ def main(args):
 
     # Evaluate and save test predictions
     model.load_state_dict(torch.load(best_checkpoint_path))
-    predictions = evaluate(test_loader, model, device, calculate_accuracy=False)
+    predictions, _ = evaluate(test_loader, model, device, calculate_accuracy=False)
     save_predictions(predictions, args.test_path)
 
 

@@ -18,46 +18,21 @@ class GCODLoss(Module):
             return total_loss, ce_loss.detach(), smoothness_loss.detach()
         return total_loss
 
-
     def compute_dirichlet_energy(self, x, edge_index, batch):
-        dirichlet = 0.0
+        row, col = edge_index
+        deg = degree(row, x.size(0), dtype=x.dtype).to(x.device)
+        deg_inv_sqrt = deg.pow(-0.5)
+        deg_inv_sqrt[deg_inv_sqrt == float('inf')] = 0
+        norm = deg_inv_sqrt[row] * deg_inv_sqrt[col]
+
+        diff = x[row] - x[col]
+        if diff.dim() == 1:
+            diff = diff.unsqueeze(1)  # ensure shape [E, 1]
+
+        squared_diff = (diff ** 2).sum(dim=1)  # shape [E]
+        energy = (norm * squared_diff).sum()
+
         num_graphs = batch.max().item() + 1
+        return energy / num_graphs
 
-        for i in range(num_graphs):
-            node_mask = (batch == i)
-            if node_mask.sum() == 0:
-                continue
-
-            # Mapping from global to local node indices
-            local_node_idx = node_mask.nonzero(as_tuple=True)[0]
-            x_i = x[local_node_idx]
-
-            # Get local edge index
-            edge_mask = node_mask[edge_index[0]] & node_mask[edge_index[1]]
-            edge_index_i = edge_index[:, edge_mask]
-
-            # Map to local indices
-            global_to_local = {idx.item(): i for i, idx in enumerate(local_node_idx)}
-            edge_index_i = edge_index_i.clone()
-            edge_index_i = edge_index_i.clone()
-            edge_index_i = torch.stack([
-                torch.tensor([global_to_local[idx.item()] for idx in edge_index_i[0]], device=edge_index.device),
-                torch.tensor([global_to_local[idx.item()] for idx in edge_index_i[1]], device=edge_index.device)
-            ], dim=0)
-
-            # Skip empty graph
-            if x_i.size(0) == 0 or edge_index_i.size(1) == 0:
-                continue
-
-            row, col = edge_index_i
-            deg = degree(row, x_i.size(0), dtype=x.dtype)
-            deg_inv_sqrt = deg.pow(-0.5)
-            deg_inv_sqrt[deg_inv_sqrt == float('inf')] = 0
-            norm = deg_inv_sqrt[row] * deg_inv_sqrt[col]
-
-            Lx = x_i[row] - x_i[col]
-            energy = (norm.view(-1, 1) * (Lx ** 2)).sum()
-            dirichlet += energy
-
-        return dirichlet / num_graphs
 

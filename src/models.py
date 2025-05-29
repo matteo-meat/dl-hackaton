@@ -325,8 +325,9 @@ class SimpleGINE(torch.nn.Module):
         x = F.relu(x)
         x = self.conv2(x, edge_index, edge_attr)
 
+        logits = x
         x = global_mean_pool(x, batch)
 
         x = self.lin(x)
 
-        return x
+        return x, logits
