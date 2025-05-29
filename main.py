@@ -70,8 +70,11 @@ def evaluate(data_loader, model, device, calculate_accuracy=False):
             output, _ = model(data)
             pred = output.argmax(dim=1)
             predictions.extend(pred.cpu().numpy())
-            true_labels.extend(data.y.cpu().tolist())
-            if calculate_accuracy:
+
+            if data.y is not None:
+                true_labels.extend(data.y.cpu().tolist())
+
+            if calculate_accuracy and data.y is not None:
                 correct += (pred == data.y).sum().item()
                 total += data.y.size(0)
     if calculate_accuracy:
