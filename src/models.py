@@ -132,7 +132,7 @@ class SimpleGIN(torch.nn.Module):
                        nn.BatchNorm1d(hidden_dim), nn.ReLU(),
                        nn.Linear(hidden_dim, hidden_dim), nn.ReLU()))
         
-        self.conv1 = GINConv(
+        self.conv2 = GINConv(
             nn.Sequential(nn.Linear(hidden_dim, hidden_dim),
                        nn.BatchNorm1d(hidden_dim), nn.ReLU(),
                        nn.Linear(hidden_dim, hidden_dim), nn.ReLU()))
@@ -151,7 +151,7 @@ class SimpleGIN(torch.nn.Module):
 
         h = torch.cat((h1, h2), dim = 1)
 
-        h = nn.Relu(self.l1(h))
+        h = F.relu(self.l1(h))
         h = F.dropout(h, p = self.drop_ratio, training = self.training)
         h = self.l2(h)
 
