@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn.inits import uniform
-from torch_geometric.nn import GCNConv, GINConv, GATConv, global_mean_pool
+from torch_geometric.nn import GCNConv, GINConv, GINEConv, GATConv, global_mean_pool
 from torch_geometric.nn import global_add_pool, global_mean_pool, global_max_pool, GlobalAttention, Set2Set
 
 from src.conv import GNN_node, GNN_node_Virtualnode
@@ -122,26 +122,73 @@ class GNN(torch.nn.Module):
     
 class SimpleGIN(torch.nn.Module):
 
-    def __init__(self, input_dim, hidden_dim, output_dim, drop_ratio = 0.5):
+    def __init__(self, hidden_dim, output_dim, drop_ratio = 0.5):
         super(SimpleGIN, self).__init__()
 
         self.drop_ratio = drop_ratio
 
-        self.conv1 = GINConv(
-            nn.Sequential(nn.Linear(input_dim, hidden_dim),
-                       nn.BatchNorm1d(hidden_dim), nn.ReLU(),
-                       nn.Linear(hidden_dim, hidden_dim), nn.ReLU()))
+        self.node_embedding = nn.Embedding(1, hidden_dim)
+
+        nn1 = nn.Sequential(nn.Linear(hidden_dim, hidden_dim),
+                    nn.BatchNorm1d(hidden_dim), nn.ReLU(),
+                    nn.Linear(hidden_dim, hidden_dim), nn.ReLU())
+        self.conv1 = GINConv(nn1)
+
+        nn2 = nn.Sequential(nn.Linear(hidden_dim, hidden_dim),
+                    nn.BatchNorm1d(hidden_dim), nn.ReLU(),
+                    nn.Linear(hidden_dim, hidden_dim), nn.ReLU())
         
-        self.conv2 = GINConv(
-            nn.Sequential(nn.Linear(hidden_dim, hidden_dim),
-                       nn.BatchNorm1d(hidden_dim), nn.ReLU(),
-                       nn.Linear(hidden_dim, hidden_dim), nn.ReLU()))
+        self.conv2 = GINConv(nn2)
 
         self.l1 = nn.Linear(hidden_dim * 3, hidden_dim * 3)
         self.l2 = nn.Linear(hidden_dim * 3, output_dim)
 
     def forward(self, data):
         x, edge_index, batch = data.x, data.edge_index, data.batch
+
+        x = self.node_embedding(x)
+        
+        h1 = self.conv1(x, edge_index)
+        h2 = self.conv2(h1, edge_index)
+
+        h1 = global_add_pool(h1, batch)
+        h2 = global_add_pool(h2, batch)
+
+        h = torch.cat((h1, h2), dim = 1)
+
+        h = F.relu(self.l1(h))
+        h = F.dropout(h, p = self.drop_ratio, training = self.training)
+        h = self.l2(h)
+
+        return h
+    
+class SimpleGINE(torch.nn.Module):
+
+    def __init__(self, hidden_dim, output_dim, drop_ratio = 0.5):
+        super(SimpleGINE, self).__init__()
+
+        self.drop_ratio = drop_ratio
+
+        self.node_embedding = nn.Embedding(1, hidden_dim)
+
+        nn1 = nn.Sequential(nn.Linear(hidden_dim, hidden_dim),
+                    nn.BatchNorm1d(hidden_dim), nn.ReLU(),
+                    nn.Linear(hidden_dim, hidden_dim), nn.ReLU())
+        self.conv1 = GINEConv(nn1)
+
+        nn2 = nn.Sequential(nn.Linear(hidden_dim, hidden_dim),
+                    nn.BatchNorm1d(hidden_dim), nn.ReLU(),
+                    nn.Linear(hidden_dim, hidden_dim), nn.ReLU())
+        
+        self.conv2 = GINEConv(nn2)
+
+        self.l1 = nn.Linear(hidden_dim * 3, hidden_dim * 3)
+        self.l2 = nn.Linear(hidden_dim * 3, output_dim)
+
+    def forward(self, data):
+        x, edge_index, batch = data.x, data.edge_index, data.batch
+
+        x = self.node_embedding(x)
         
         h1 = self.conv1(x, edge_index)
         h2 = self.conv2(h1, edge_index)
