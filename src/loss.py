@@ -19,12 +19,25 @@ class GCODLoss(Module):
         num_graphs = batch.max().item() + 1
 
         for i in range(num_graphs):
-            mask = (batch == i)
-            x_i = x[mask]
-            node_mask = mask.nonzero(as_tuple=True)[0]
-            edge_mask = mask[edge_index[0]] & mask[edge_index[1]]
+            node_mask = (batch == i)
+            if node_mask.sum() == 0:
+                continue
+
+            # Mapping from global to local node indices
+            local_node_idx = node_mask.nonzero(as_tuple=True)[0]
+            x_i = x[local_node_idx]
+
+            # Get local edge index
+            edge_mask = node_mask[edge_index[0]] & node_mask[edge_index[1]]
             edge_index_i = edge_index[:, edge_mask]
 
+            # Map to local indices
+            global_to_local = {idx.item(): i for i, idx in enumerate(local_node_idx)}
+            edge_index_i = edge_index_i.clone()
+            edge_index_i[0] = edge_index_i[0].apply_(lambda x: global_to_local[x.item()])
+            edge_index_i[1] = edge_index_i[1].apply_(lambda x: global_to_local[x.item()])
+
+            # Skip empty graph
             if x_i.size(0) == 0 or edge_index_i.size(1) == 0:
                 continue
 
@@ -39,3 +52,4 @@ class GCODLoss(Module):
             dirichlet += energy
 
         return dirichlet / num_graphs
+
