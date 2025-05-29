@@ -41,8 +41,7 @@ def train(data_loader, model, optimizer, criterion, device, save_checkpoints, ch
     
     return total_loss / len(data_loader)
 
-
-def evaluate(data_loader, model, criterion, device, calculate_accuracy=False):
+def evaluate_training(data_loader, model, criterion, device):
     model.eval()
     correct = 0
     total = 0
@@ -58,13 +57,21 @@ def evaluate(data_loader, model, criterion, device, calculate_accuracy=False):
             pred = output.argmax(dim=1)
             predictions.extend(pred.cpu().numpy())
             labels.extend(data.y.cpu().numpy())
-            if calculate_accuracy:
-                correct += (pred == data.y).sum().item()
-                total += data.y.size(0)
-    if calculate_accuracy:
-        accuracy = correct / total
-        return predictions, labels, total_val_loss/len(data_loader), accuracy
-    return predictions, labels, total_val_loss/len(data_loader)
+            correct += (pred == data.y).sum().item()
+            total += data.y.size(0)
+    accuracy = correct / total
+    return predictions, labels, total_val_loss/len(data_loader), accuracy
+
+def evaluate_testing(data_loader, model, device):
+    model.eval()
+    predictions = []
+    with torch.no_grad():
+        for data in tqdm(data_loader, desc="Iterating test graphs", unit="batch"):
+            data = data.to(device)
+            output = model(data)
+            pred = output.argmax(dim=1)
+            predictions.extend(pred.cpu().numpy())
+    return predictions
 
 def save_predictions(predictions, test_path):
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -90,7 +97,6 @@ def save_predictions(predictions, test_path):
 
 def plot_training_progress(train_losses, train_accuracies, train_f1s, val_losses, val_accuracies, val_f1s, output_dir):
     epochs = range(1, len(train_losses) + 1)
-    print("Plotting training process...")
     plt.figure(figsize=(18, 6))
 
     # Plot training loss
@@ -119,12 +125,9 @@ def plot_training_progress(train_losses, train_accuracies, train_f1s, val_losses
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, "training_progress.png"))
     plt.close()
-    print("Training process plotted!")
 
-    print("Plotting evaluation process...")
     plt.figure(figsize=(18, 6))
 
-    print("Plotting validation loss...")
     # Plot validation loss
     plt.subplot(1, 3, 1)
     plt.plot(epochs, val_losses, label="Validation Loss", color='blue')
@@ -133,30 +136,25 @@ def plot_training_progress(train_losses, train_accuracies, train_f1s, val_losses
     plt.title('Validation Loss per Epoch')
     print("Validation loss plotted!")
 
-    print("Plotting validation accuracy...")
     # Plot validation accuracy
     plt.subplot(1, 3, 2)
     plt.plot(epochs, val_accuracies, label="Validation Accuracy", color='green')
     plt.xlabel('Epoch')
     plt.ylabel('Accuracy')
     plt.title('Validation Accuracy per Epoch')
-    print("Validation accuracy plotted!")
 
-    print("Plotting validation f1...")
     # Plot validation f1
     plt.subplot(1, 3, 3)
     plt.plot(epochs, val_f1s, label="Validation F1 score", color='green')
     plt.xlabel('Epoch')
     plt.ylabel('F1 score')
     plt.title('Validation F1 score per Epoch')
-    print("Validation f1 plotted!")
 
     # Save plots in the current directory
     os.makedirs(output_dir, exist_ok=True)
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, "validation_progress.png"))
     plt.close()
-    print("Evaluation process plotted!")
 
 
 def main(args):
@@ -250,9 +248,8 @@ def main(args):
                 current_epoch=epoch
             )
 
-            train_preds, train_labels, _, train_acc = evaluate(train_loader, model, criterion, device, calculate_accuracy=True)
-            val_preds, val_labels, val_loss, val_acc = evaluate(val_loader, model, criterion, device, calculate_accuracy=True)
-
+            train_preds, train_labels, _, train_acc = evaluate_training(train_loader, model, criterion, device)
+            val_preds, val_labels, val_loss, val_acc = evaluate_training(val_loader, model, criterion, device)
             train_f1 = f1_score(train_labels, train_preds, average = "macro")
             val_f1 = f1_score(val_labels, val_preds, average = "macro")
 
@@ -280,19 +277,12 @@ def main(args):
                 print(f"Early stopping triggered after {epoch + 1} epochs!")
                 break
         
-        print("Starting plot...")
         plot_training_progress(train_losses, train_accuracies, train_f1s, val_losses, val_accuracies, val_f1s, os.path.join(logs_folder, "plots"))
-        print("All plots done!")
+
     # Evaluate and save test predictions
-    print("Loading best model...")
     model.load_state_dict(torch.load(best_checkpoint_path))
-    print("Best model loaded!")
-    print("Computing predictions...")
-    predictions, _, _ = evaluate(test_loader, model, criterion, device, calculate_accuracy=False)
-    print("Predictions computed!")
-    print("Saving predictions...")
+    predictions = evaluate_testing(test_loader, model, device)
     save_predictions(predictions, args.test_path)
-    print("Predictions saved!")
 
 
 if __name__ == "__main__":
