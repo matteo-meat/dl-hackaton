@@ -6,6 +6,7 @@ from torch_geometric.loader import DataLoader
 import os
 import logging
 import argparse
+import numpy as np
 import pandas as pd
 from tqdm import tqdm
 import matplotlib.pyplot as plt
@@ -41,16 +42,19 @@ def train(data_loader, model, optimizer, criterion, device, save_checkpoints, ch
     return total_loss / len(data_loader)
 
 
-def evaluate(data_loader, model, device, calculate_accuracy=False):
+def evaluate(data_loader, model, criterion, device, calculate_accuracy=False):
     model.eval()
     correct = 0
     total = 0
     predictions = []
     labels = []
+    total_val_loss = 0
     with torch.no_grad():
         for data in tqdm(data_loader, desc="Iterating eval graphs", unit="batch"):
             data = data.to(device)
             output = model(data)
+            val_loss = criterion(output, data.y)
+            total_val_loss += val_loss.item()
             pred = output.argmax(dim=1)
             predictions.extend(pred.cpu().numpy())
             labels.extend(data.y.cpu().numpy())
@@ -59,8 +63,8 @@ def evaluate(data_loader, model, device, calculate_accuracy=False):
                 total += data.y.size(0)
     if calculate_accuracy:
         accuracy = correct / total
-        return predictions, labels, accuracy
-    return predictions, labels
+        return predictions, labels, total_val_loss/len(data_loader), accuracy
+    return predictions, labels, total_val_loss/len(data_loader)
 
 def save_predictions(predictions, test_path):
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -80,7 +84,7 @@ def save_predictions(predictions, test_path):
     output_df.to_csv(output_csv_path, index=False)
     print(f"Predictions saved to {output_csv_path}")
 
-def plot_training_progress(train_losses, train_accuracies, train_f1s, val_accuracies, val_f1s, output_dir):
+def plot_training_progress(train_losses, train_accuracies, train_f1s, val_losses, val_accuracies, val_f1s, output_dir):
     epochs = range(1, len(train_losses) + 1)
     plt.figure(figsize=(18, 6))
 
@@ -111,17 +115,24 @@ def plot_training_progress(train_losses, train_accuracies, train_f1s, val_accura
     plt.savefig(os.path.join(output_dir, "training_progress.png"))
     plt.close()
 
-    plt.figure(figsize=(12, 6))
+    plt.figure(figsize=(18, 6))
+
+    # Plot validation loss
+    plt.subplot(1, 3, 1)
+    plt.plot(epochs, val_losses, label="Validation Loss", color='blue')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.title('Validation Loss per Epoch')
 
     # Plot validation accuracy
-    plt.subplot(1, 2, 1)
+    plt.subplot(1, 3, 2)
     plt.plot(epochs, val_accuracies, label="Validation Accuracy", color='green')
     plt.xlabel('Epoch')
     plt.ylabel('Accuracy')
     plt.title('Validation Accuracy per Epoch')
 
     # Plot validation f1
-    plt.subplot(1, 2, 2)
+    plt.subplot(1, 3, 3)
     plt.plot(epochs, val_f1s, label="Validation F1 score", color='green')
     plt.xlabel('Epoch')
     plt.ylabel('F1 score')
@@ -200,10 +211,11 @@ def main(args):
         train_losses = []
         train_accuracies = []
         train_f1s = []
+        val_losses = []
         val_accuracies = []
         val_f1s = []
 
-        best_val_f1 = 0.0
+        best_val_loss = np.inf
 
         # Calculate intervals for saving checkpoints
         if num_checkpoints > 1:
@@ -222,25 +234,26 @@ def main(args):
                 current_epoch=epoch
             )
 
-            train_preds, train_labels, train_acc = evaluate(train_loader, model, device, calculate_accuracy=True)
-            val_preds, val_labels, val_acc = evaluate(val_loader, model, device, calculate_accuracy=True)
+            train_preds, train_labels, _, train_acc = evaluate(train_loader, model, criterion, device, calculate_accuracy=True)
+            val_preds, val_labels, val_loss, val_acc = evaluate(val_loader, model, criterion, device, calculate_accuracy=True)
 
             train_f1 = f1_score(train_labels, train_preds, average = "macro")
             val_f1 = f1_score(val_labels, val_preds, average = "macro")
 
-            print(f"Epoch {epoch + 1}/{num_epochs}, Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}, Train F1: {train_f1:.4f}, Val Acc: {val_acc:.4f}, Val F1: {val_f1:.4f}")
+            print(f"Epoch {epoch + 1}/{num_epochs}, Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}, Train F1: {train_f1:.4f}, Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}, Val F1: {val_f1:.4f}")
 
             # Save logs for training progress
             train_losses.append(train_loss)
             train_accuracies.append(train_acc)
             train_f1s.append(train_f1)
+            val_losses.append(val_loss)
             val_accuracies.append(val_acc)
             val_f1s.append(val_f1s)
-            logging.info(f"Epoch {epoch + 1}/{num_epochs}, Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}, Train F1: {train_f1:.4f}, Val Acc: {val_acc:.4f}, Val F1: {val_f1:.4f}")
+            logging.info(f"Epoch {epoch + 1}/{num_epochs}, Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}, Train F1: {train_f1:.4f}, Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}, Val F1: {val_f1:.4f}")
             
             # Save best model
-            if val_f1 > best_val_f1:
-                best_val_f1 = val_f1
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
                 torch.save(model.state_dict(), best_checkpoint_path)
                 print(f"Best model updated and saved at {best_checkpoint_path}")
                 epochs_without_improvement = 0
@@ -251,7 +264,7 @@ def main(args):
                 print(f"Early stopping triggered after {epoch + 1} epochs!")
                 break
 
-        plot_training_progress(train_losses, train_accuracies, train_f1s, val_accuracies, val_f1s, os.path.join(logs_folder, "plots"))
+        plot_training_progress(train_losses, train_accuracies, train_f1s, val_losses, val_accuracies, val_f1s, os.path.join(logs_folder, "plots"))
 
     # Evaluate and save test predictions
     model.load_state_dict(torch.load(best_checkpoint_path))
