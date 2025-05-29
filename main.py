@@ -192,8 +192,6 @@ def main(args):
 
     # Prepare test dataset and loader
     test_dataset = GraphDataset(args.test_path, transform=init_features)
-    sample = test_dataset[0]
-    print(sample.edg_attr.shape)
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False)
 
     # Train dataset and loader (if train_path is provided)
