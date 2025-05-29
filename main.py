@@ -143,7 +143,7 @@ def main(args):
     elif args.gnn == 'slgat':
          model = SLGAT(input_dim, hidden_dim, output_dim).to(device)
     elif args.gnn == 'gnn':
-         model = GNN(num_class=output_dim, emb_dim=input_dim, residual=True, graph_pooling='attention', JK='cat').to(device)
+         model = GNN(num_class=output_dim, emb_dim=input_dim, residual=True, graph_pooling='attention', JK='last').to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
     criterion = torch.nn.CrossEntropyLoss()
