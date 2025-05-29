@@ -71,10 +71,14 @@ def save_predictions(predictions, test_path):
     submission_folder = os.path.join(script_dir, "submission")
     test_dir_name = os.path.basename(os.path.dirname(test_path))
     
+    print(f"Making predictions folder at {submission_folder}...")
     os.makedirs(submission_folder, exist_ok=True)
+    if os.path.exists(submission_folder):
+        print("Submission folder done!")
     
     output_csv_path = os.path.join(submission_folder, f"testset_{test_dir_name}.csv")
     
+    print(f"Creating output csv in {output_csv_path}...")
     test_graph_ids = list(range(len(predictions)))
     output_df = pd.DataFrame({
         "id": test_graph_ids,
@@ -86,6 +90,7 @@ def save_predictions(predictions, test_path):
 
 def plot_training_progress(train_losses, train_accuracies, train_f1s, val_losses, val_accuracies, val_f1s, output_dir):
     epochs = range(1, len(train_losses) + 1)
+    print("Plotting training process...")
     plt.figure(figsize=(18, 6))
 
     # Plot training loss
@@ -114,7 +119,9 @@ def plot_training_progress(train_losses, train_accuracies, train_f1s, val_losses
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, "training_progress.png"))
     plt.close()
+    print("Training process plotted!")
 
+    print("Plotting evaluation process...")
     plt.figure(figsize=(18, 6))
 
     # Plot validation loss
@@ -143,6 +150,7 @@ def plot_training_progress(train_losses, train_accuracies, train_f1s, val_losses
     plt.tight_layout()
     plt.savefig(os.path.join(output_dir, "validation_progress.png"))
     plt.close()
+    print("Evaluation process plotted!")
 
 
 def main(args):
@@ -265,13 +273,20 @@ def main(args):
             if epochs_without_improvement >= patience:
                 print(f"Early stopping triggered after {epoch + 1} epochs!")
                 break
-
+        
+        print("Starting plot...")
         plot_training_progress(train_losses, train_accuracies, train_f1s, val_losses, val_accuracies, val_f1s, os.path.join(logs_folder, "plots"))
-
+        print("All plots done!")
     # Evaluate and save test predictions
+    print("Loading best model...")
     model.load_state_dict(torch.load(best_checkpoint_path))
+    print("Best model loaded!")
+    print("Computing predictions...")
     predictions, _, _ = evaluate(test_loader, model, criterion, device, calculate_accuracy=False)
+    print("Predictions computed!")
+    print("Saving predictions...")
     save_predictions(predictions, args.test_path)
+    print("Predictions saved!")
 
 
 if __name__ == "__main__":
