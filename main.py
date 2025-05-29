@@ -11,7 +11,7 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 
 from src.utils import set_seed
-from src.models import SimpleGCN, CulturalClassificationGNN, GIN, SLGAT, GNN
+from src.models import SimpleGCN, CulturalClassificationGNN, GIN, SLGAT, GNN, SimpleGINE
 from src.loss import GCODLoss
 from src.loadData import GraphDataset
 from sklearn.metrics import f1_score
@@ -178,8 +178,8 @@ def main(args):
     # Initialize the model, optimizer, and loss criterion
     if args.gnn == 'simple':
          model = SimpleGCN(input_dim, hidden_dim, output_dim).to(device)
-    elif args.gnn == 'mnlp':
-         model = CulturalClassificationGNN(input_dim, hidden_dim, output_dim).to(device)
+    elif args.gnn == 'gine':
+         model = SimpleGINE(hidden_dim, output_dim).to(device)
     elif args.gnn == 'gin':
          model = GIN(input_dim, hidden_dim, output_dim).to(device)
     elif args.gnn == 'slgat':
