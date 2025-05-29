@@ -264,7 +264,7 @@ def main(args):
             train_f1s.append(train_f1)
             val_losses.append(val_loss)
             val_accuracies.append(val_acc)
-            val_f1s.append(val_f1s)
+            val_f1s.append(val_f1)
             logging.info(f"Epoch {epoch + 1}/{num_epochs}, Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}, Train F1: {train_f1:.4f}, Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}, Val F1: {val_f1:.4f}")
             
             # Save best model
