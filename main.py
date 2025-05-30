@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import f1_score
 
 from src.utils import set_seed, plot_training_progress, save_predictions
-from src.models import SimpleGCN, CulturalClassificationGNN, GNN, SimpleGINE
+from src.models import SimpleGCN, GNN, SimpleGINE, EnhancedGINEWithVN
 from src.loadData import GraphDataset
 from src.loss import GCODLoss
 
@@ -22,81 +22,29 @@ def init_features(data):
     data.x = torch.zeros(data.num_nodes, dtype=torch.long)
     return data
 
-
-# def train(data_loader, model, optimizer, criterion, device, save_checkpoints, checkpoint_path, current_epoch, use_gcod = False):
-#     model.train()
-#     total_loss = 0
-#     total_ce = 0
-#     total_dirichlet = 0
-
-#     for data in tqdm(data_loader, desc="Iterating training graphs", unit="batch"):
-#         data = data.to(device)
-#         optimizer.zero_grad()
-
-#         if use_gcod:
-#             output, node_embeddings = model(data)
-#             loss, ce_loss, dirichlet = criterion(output, data.y, node_embeddings, data.edge_index, data.batch, return_components=True)
-#             total_ce += ce_loss.item()
-#             total_dirichlet += dirichlet.item()
-#         else: 
-#             output, _ = model(data)
-#             loss = criterion(output, data.y)
-
-#         loss.backward()
-#         optimizer.step()
-#         total_loss += loss.item()
-
-#     if save_checkpoints:
-#         checkpoint_file = f"{checkpoint_path}_epoch_{current_epoch + 1}.pth"
-#         torch.save(model.state_dict(), checkpoint_file)
-#         print(f"Checkpoint saved at {checkpoint_file}")
-    
-#     avg_loss = total_loss / len(data_loader)
-#     avg_ce = total_ce / len(data_loader) if use_gcod else 0.0
-#     avg_dirichlet = total_dirichlet / len(data_loader) if use_gcod else 0.0
-#     return avg_loss, avg_ce, avg_dirichlet
-
 def train(
     data_loader, model, optimizer, criterion, device,
     save_checkpoints, checkpoint_path, current_epoch,
-    use_gcod=False, lambda_smoothness=1e-3, warmup_epochs=5
-):
+    use_gcod=False
+    ):
+
     model.train()
     total_loss = 0
     total_ce = 0
     total_dirichlet = 0
-
-    # Warm-up schedule for the smoothness term
-    if use_gcod:
-        if current_epoch < warmup_epochs:
-            curr_lambda = 0.0
-        else:
-            progress = min(1.0, (current_epoch - warmup_epochs + 1) / float(warmup_epochs))
-            curr_lambda = progress * lambda_smoothness
-    else:
-        curr_lambda = 0.0
 
     for data in tqdm(data_loader, desc="Iterating training graphs", unit="batch"):
         data = data.to(device)
         optimizer.zero_grad()
 
         if use_gcod:
-            # Model must return (logits, node_embeddings)
-            logits, node_embeddings = model(data)
-            # Cross-entropy component
-            ce_loss = torch.nn.functional.cross_entropy(logits, data.y)
-            # Normalize embeddings to unit length
-            h = torch.nn.functional.normalize(node_embeddings, p=2, dim=-1)
-            # Smoothness term
-            smoothness_loss = criterion.compute_dirichlet_energy(h, data.edge_index, data.batch)
-            # Combine with dynamic lambda
-            loss = ce_loss + curr_lambda * smoothness_loss
-
-            total_ce += ce_loss.item()
-            total_dirichlet += smoothness_loss.item()
+            output, node_embed = model(data)
+            loss, ce, dirichlet = criterion(output, data.y, node_embed, data.edge_index, data.batch, epoch=current_epoch ,return_components=True)
+            total_ce  += ce.item()
+            total_dirichlet += dirichlet.item()
         else:
-            logits, _ = model(data)
-            loss = criterion(logits, data.y)
+            output, _ = model(data)
+            loss = criterion(output, data.y)
 
         loss.backward()
         optimizer.step()
@@ -181,15 +129,15 @@ def main(args):
     # ========================
     if args.gnn == 'simple':
          model = SimpleGCN(input_dim, hidden_dim, output_dim).to(device)
-    elif args.gnn == 'mnlp':
-         model = CulturalClassificationGNN(input_dim, hidden_dim, output_dim).to(device)
+    elif args.gnn == 'ena_gine':
+         model = EnhancedGINEWithVN(input_dim, hidden_dim, output_dim).to(device)
     elif args.gnn == 'gin':
         model = GNN(gnn_type = 'gin', num_class = output_dim, num_layer = args.num_layer, emb_dim = args.emb_dim, drop_ratio = args.drop_ratio, virtual_node = False).to(device)
     elif args.gnn == 'simple_gine':
         model = SimpleGINE(hidden_dim, output_dim, args.drop_ratio).to(device)
     
     if args.use_gcod:
-        criterion = GCODLoss()
+        criterion = GCODLoss(lambda_smoothness=args.gcod_lambda, warmup_epochs=args.gcod_warmup_epochs)
     else:
         criterion = torch.nn.CrossEntropyLoss()
 
@@ -267,9 +215,7 @@ def main(args):
                 save_checkpoints=(epoch + 1 in checkpoint_intervals),
                 checkpoint_path=os.path.join(checkpoints_folder, f"model_{test_dir_name}"),
                 current_epoch=epoch,
-                use_gcod=args.use_gcod,
-                warmup_epochs=30,
-                lambda_smoothness=1
+                use_gcod=args.use_gcod
             )
 
             # Evaluation step
@@ -320,8 +266,10 @@ def main(args):
 if __name__ == "__main__":
     num_epochs = 700
     patience = 25
-    batch_size = 64
+    batch_size = 128
     use_gcod = True
+    gcod_lambda = 1e-4
+    warmup_epochs = 30
 
     parser = argparse.ArgumentParser(description="Train and evaluate GNN models on graph datasets.")
     parser.add_argument("--train_path", type=str, help="Path to the training dataset (optional).")
@@ -336,6 +284,8 @@ if __name__ == "__main__":
     parser.add_argument('--epochs', type=int, default=num_epochs, help='number of epochs to train (default: 50)')
     parser.add_argument('--patience', type=int, default=patience, help='max number of epochs without training improvements (default: 25)')
     parser.add_argument('--use_gcod', action='store_true', default=use_gcod, help='Use GCOD loss instead of CrossEntropyLoss')
+    parser.add_argument('--gcod_lambda', type=float, default=gcod_lambda,help="final smoothness weight λ (default: 1e-2)")
+    parser.add_argument("--gcod_warmup_epochs", type=int, default=warmup_epochs)
 
     args = parser.parse_args()
     main(args)

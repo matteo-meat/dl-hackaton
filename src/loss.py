@@ -5,18 +5,26 @@ from torch.nn import Module
 from torch_geometric.utils import degree
 
 class GCODLoss(Module):
-    def __init__(self, lambda_smoothness=1e-2, debug=False):
+    def __init__(self, lambda_smoothness=1e-2, warmup_epochs: int = 0):
         super().__init__()
-        self.lambda_smoothness = lambda_smoothness
-        self.debug = debug
+        self.base_lambda = lambda_smoothness
+        self.warmup_epochs = warmup_epochs
 
-    def forward(self, logits, labels, x, edge_index, batch, return_components=False):
+        # Recording the last epoch seen to compute the effective lambda to be apply
+        self.last_epoch = 0
+
+    def forward(self, logits, labels, x, edge_index, batch, epoch: int = None, return_components=False):
         ce_loss = F.cross_entropy(logits, labels)
         smoothness_loss = self.compute_dirichlet_energy(x, edge_index, batch)
-        total_loss = ce_loss + self.lambda_smoothness * smoothness_loss
-
-        if self.debug:
-            print(f"[GCODLoss] CE: {ce_loss.item():.4f} | Dirichlet: {smoothness_loss.item():.4f} | Total: {total_loss.item():.4f}")
+        
+        if self.warmup_epochs > 0 and epoch is not None:
+            #Linear ramp from 0 to base_lambda
+            frac = min((epoch + 1) / self.warmup_epochs, 1.0)
+            lambda_eff = self.base_lambda * frac
+        else:
+            lambda_eff = self.base_lambda
+        
+        total_loss = ce_loss + lambda_eff * smoothness_loss
 
         if return_components:
             return total_loss, ce_loss.detach(), smoothness_loss.detach()
