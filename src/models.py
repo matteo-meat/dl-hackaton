@@ -13,8 +13,6 @@ class DefaultGCN(torch.nn.Module):
         self.embedding = torch.nn.Embedding(1, input_dim) 
         self.conv1 = GCNConv(input_dim, hidden_dim)
         self.conv2 = GCNConv(hidden_dim, hidden_dim)
-        # self.conv1 = GINConv(torch.nn.Linear(input_dim, hidden_dim), torch.nn.ReLU(), torch.nn.Linear(hidden_dim, hidden_dim))
-        # self.conv2 = GINConv(torch.nn.Linear(input_dim, hidden_dim), torch.nn.ReLU(), torch.nn.Linear(hidden_dim, hidden_dim))
         self.global_pool = global_mean_pool  
         self.fc = torch.nn.Linear(hidden_dim, output_dim)
 
