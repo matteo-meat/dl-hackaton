@@ -79,7 +79,7 @@ def evaluate_training(data_loader, model, criterion, device, use_gcod=False):
                 output, node_embeddings = model(data)
                 val_loss, _, _ = criterion(output, data.y, node_embeddings, data.edge_index, data.batch, return_components=True)
             else:
-                output = model(data)
+                output, _ = model(data)
                 val_loss = criterion(output, data.y)
                 
             total_val_loss += val_loss.item()
@@ -239,8 +239,8 @@ def main(args):
             )
                         
             # Best model saving and early stopping
-            if val_f1 > best_val_f1:
-                best_val_f1 = val_f1
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
                 torch.save(model.state_dict(), best_checkpoint_path)
                 print(f"✅ Best model updated (Val Acc: {val_acc:.4f}) and saved at {best_checkpoint_path}✅")
                 epochs_without_improvement = 0
