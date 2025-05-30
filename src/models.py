@@ -193,3 +193,63 @@ class SimpleGINE(torch.nn.Module):
         x = self.lin(x)
 
         return x
+    
+class GINEPaper(torch.nn.Module):
+
+    def __init__(self, hidden_dim, output_dim, drop_ratio = 0.5):
+        super(SimpleGINE, self).__init__()
+
+        self.drop_ratio = drop_ratio
+
+        self.node_embedding = nn.Embedding(1, hidden_dim)
+
+        nn1 = nn.Sequential(nn.Linear(hidden_dim, hidden_dim), 
+                            nn.ReLU(),
+                            nn.Linear(hidden_dim, hidden_dim))
+        self.conv1 = GINEConv(nn1, edge_dim = 7)
+
+        nn2 = nn.Sequential(nn.Linear(hidden_dim, hidden_dim), 
+                            nn.ReLU(),
+                            nn.Linear(hidden_dim, hidden_dim))
+        
+        self.conv2 = GINEConv(nn2, edge_dim = 7)
+
+        nn3 = nn.Sequential(nn.Linear(hidden_dim, hidden_dim), 
+                            nn.ReLU(),
+                            nn.Linear(hidden_dim, hidden_dim))
+        self.conv3 = GINEConv(nn3, edge_dim = 7)
+
+        nn4 = nn.Sequential(nn.Linear(hidden_dim, hidden_dim), 
+                            nn.ReLU(),
+                            nn.Linear(hidden_dim, hidden_dim))
+        
+        self.conv4 = GINEConv(nn4, edge_dim = 7)
+
+        nn5 = nn.Sequential(nn.Linear(hidden_dim, hidden_dim), 
+                            nn.ReLU(),
+                            nn.Linear(hidden_dim, hidden_dim))
+        
+        self.conv5 = GINEConv(nn5, edge_dim = 7)
+
+        self.lin = nn.Linear(hidden_dim, output_dim)
+
+    def forward(self, data):
+        x, edge_index, edge_attr, batch = data.x, data.edge_index, data.edge_attr, data.batch
+
+        x = self.node_embedding(x)
+
+        x = self.conv1(x, edge_index, edge_attr)
+        x = F.relu(x)
+        x = self.conv2(x, edge_index, edge_attr)
+        x = F.relu(x)
+        x = self.conv3(x, edge_index, edge_attr)
+        x = F.relu(x)
+        x = self.conv4(x, edge_index, edge_attr)
+        x = F.relu(x)
+        x = self.conv5(x, edge_index, edge_attr)
+
+        x = global_mean_pool(x, batch)
+
+        x = self.lin(x)
+
+        return x
