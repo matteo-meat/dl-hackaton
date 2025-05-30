@@ -130,7 +130,7 @@ def main(args):
     if args.gnn == 'simple':
          model = SimpleGCN(input_dim, hidden_dim, output_dim).to(device)
     elif args.gnn == 'ena_gine':
-         model = EnhancedGINEWithVN(input_dim, hidden_dim, output_dim).to(device)
+         model = EnhancedGINEWithVN(hidden_dim, output_dim).to(device)
     elif args.gnn == 'gin':
         model = GNN(gnn_type = 'gin', num_class = output_dim, num_layer = args.num_layer, emb_dim = args.emb_dim, drop_ratio = args.drop_ratio, virtual_node = False).to(device)
     elif args.gnn == 'simple_gine':
@@ -267,7 +267,7 @@ if __name__ == "__main__":
     num_epochs = 700
     patience = 25
     batch_size = 128
-    use_gcod = True
+    use_gcod = False
     gcod_lambda = 1e-4
     warmup_epochs = 30
 

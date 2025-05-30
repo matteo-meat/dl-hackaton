@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch_geometric.nn import GCNConv, GINConv, GATConv, global_mean_pool, global_add_pool, global_max_pool, GlobalAttention, Set2Set, GINEConv, VirtualNode
+from torch_geometric.nn import GCNConv, GINConv, GATConv, global_mean_pool, global_add_pool, global_max_pool, GlobalAttention, Set2Set, GINEConv
 from torch_geometric.nn import MessagePassing
 from torch_geometric.nn.inits import uniform
 from torch_geometric.transforms import VirtualNode
