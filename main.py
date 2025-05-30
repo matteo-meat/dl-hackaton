@@ -15,7 +15,7 @@ from sklearn.metrics import f1_score
 from src.utils import set_seed
 from src.loss import FocalLoss
 from src.loadData import GraphDataset
-from src.models import SimpleGCN, CulturalClassificationGNN, GNN, SimpleGIN, SimpleGINE, GINEPaper
+from src.models import DefaultGCN, DefaultGIN, SimpleGIN, SimpleGINE, GNN, GINEPaper, CulturalClassificationGNN
 
 
 def init_features(data):
@@ -171,18 +171,26 @@ def main(args):
     num_checkpoints = args.num_checkpoints if args.num_checkpoints else 5
 
     # Initialize the model, optimizer, and loss criterion
-    if args.gnn == 'simple':
-         model = SimpleGCN(input_dim, hidden_dim, output_dim).to(device)
-    elif args.gnn == 'mnlp':
-         model = CulturalClassificationGNN(input_dim, hidden_dim, output_dim).to(device)
-    elif args.gnn == 'gin':
-        model = GNN(gnn_type = 'gin', num_class = output_dim, num_layer = args.num_layer, emb_dim = args.emb_dim, drop_ratio = args.drop_ratio, virtual_node = False).to(device)
+    if args.gnn == 'def_gcn':
+         model = DefaultGCN(input_dim, hidden_dim, output_dim).to(device)
+    elif args.gnn == 'def_gin':
+         model = DefaultGIN(input_dim, hidden_dim, output_dim).to(device)
     elif args.gnn == 'simple_gin':
         model = SimpleGIN(hidden_dim, output_dim, args.drop_ratio).to(device)
     elif args.gnn == 'simple_gine':
         model = SimpleGINE(hidden_dim, output_dim, args.drop_ratio).to(device)
-    elif args.gnn == 'gine_paper':
-        model = GINEPaper(hidden_dim, output_dim, args.drop_ratio).to(device)
+    elif args.gnn == 'gin_man':
+        model = GNN(gnn_type = 'gin', num_class = output_dim, num_layer = args.num_layer, emb_dim = args.emb_dim, drop_ratio = args.drop_ratio, virtual_node = False).to(device)
+    elif args.gnn == 'gcn_man':
+        model = GNN(gnn_type = 'gcn', num_class = output_dim, num_layer = args.num_layer, emb_dim = args.emb_dim, drop_ratio = args.drop_ratio, virtual_node = False).to(device)
+    elif args.gnn == 'gin_virt':
+        model = GNN(gnn_type = 'gin', num_class = output_dim, num_layer = args.num_layer, emb_dim = args.emb_dim, drop_ratio = args.drop_ratio, virtual_node = True).to(device)
+    elif args.gnn == 'gcn_virt':
+        model = GNN(gnn_type = 'gcn', num_class = output_dim, num_layer = args.num_layer, emb_dim = args.emb_dim, drop_ratio = args.drop_ratio, virtual_node = True).to(device)
+    # elif args.gnn == 'gine_paper':
+    #     model = GINEPaper(hidden_dim, output_dim, args.drop_ratio).to(device)
+    # elif args.gnn == 'mnlp':
+    #      model = CulturalClassificationGNN(input_dim, hidden_dim, output_dim).to(device)
     
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
@@ -244,8 +252,9 @@ def main(args):
         else:
             checkpoint_intervals = [num_epochs]
 
-        patience = args.patience
-        epochs_without_improvement = 0
+        if args.early_stopping:
+            patience = args.patience
+            epochs_without_improvement = 0
         
         for epoch in range(num_epochs):
             train_loss = train(
@@ -276,13 +285,13 @@ def main(args):
                 best_val_loss = val_loss
                 torch.save(model.state_dict(), best_checkpoint_path)
                 print(f"Best model updated and saved at {best_checkpoint_path}")
-                epochs_without_improvement = 0
-            else:
+                if args.early_stopping:
+                    epochs_without_improvement = 0
+            elif args.early_stopping:
                 epochs_without_improvement += 1
-
-            if epochs_without_improvement >= patience:
-                print(f"Early stopping triggered after {epoch + 1} epochs!")
-                break
+                if epochs_without_improvement >= patience:
+                    print(f"Early stopping triggered after {epoch + 1} epochs!")
+                    break
         
         plot_training_progress(train_losses, train_accuracies, train_f1s, val_losses, val_accuracies, val_f1s, os.path.join(logs_folder, "plots"))
 
@@ -298,13 +307,14 @@ if __name__ == "__main__":
     parser.add_argument("--test_path", type=str, required=True, help="Path to the test dataset.")
     parser.add_argument("--num_checkpoints", type=int, help="Number of checkpoints to save during training.")
     # parser.add_argument('--device', type=int, default=1, help='which gpu to use if any (default: 0)')
-    parser.add_argument('--gnn', type=str, default='simple', help='GNN simple, mnlp, gin, simple_gin, simple_gine, gine_paper(default: simple)')
+    parser.add_argument('--gnn', type=str, default='def_gcn', help='GNN def_gcn, def_gin, simple_gin, simple_gine, gin_man, gcn_man, gin_virt, gcn_virt (default: def_gcn)')
     parser.add_argument('--criterion', type=str, default='ce', help='Loss to use, ce or focal (default: ce)')
     parser.add_argument('--drop_ratio', type=float, default=0.5, help='dropout ratio (default: 0.5)')
     parser.add_argument('--num_layer', type=int, default=5, help='number of GNN message passing layers (default: 5)')
     parser.add_argument('--emb_dim', type=int, default=300, help='dimensionality of hidden units in GNNs (default: 300)')
     parser.add_argument('--batch_size', type=int, default=32, help='input batch size for training (default: 32)')
     parser.add_argument('--epochs', type=int, default=50, help='number of epochs to train (default: 50)')
+    parser.add_argument('--early_stopping', action='store_true', default=False, help='early stopping or not (default: False)')
     parser.add_argument('--patience', type=int, default=25, help='max number of epochs without training improvements (default: 25)')
     
     args = parser.parse_args()
