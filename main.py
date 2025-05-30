@@ -13,8 +13,9 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import f1_score
 
 from src.utils import set_seed
-from src.models import SimpleGCN, CulturalClassificationGNN, GNN, SimpleGIN, SimpleGINE
+from src.loss import FocalLoss
 from src.loadData import GraphDataset
+from src.models import SimpleGCN, CulturalClassificationGNN, GNN, SimpleGIN, SimpleGINE
 
 
 def init_features(data):
@@ -182,7 +183,11 @@ def main(args):
         model = SimpleGINE(hidden_dim, output_dim, args.drop_ratio).to(device)
     
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-    criterion = torch.nn.CrossEntropyLoss(label_smoothing = 0.2)
+
+    if args.criterion == "ce":
+        criterion = torch.nn.CrossEntropyLoss(label_smoothing = 0.2)
+    elif args.criterion == "focal":
+        criterion = FocalLoss()
 
     test_dir_name = os.path.basename(os.path.dirname(args.test_path))
 
