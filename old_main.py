@@ -11,48 +11,51 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 
 from src.utils import set_seed
-from src.models import SimpleGCN, CulturalClassificationGNN, GIN, paperGIN, RobustGIN
+from src.models import SimpleGCN, CulturalClassificationGNN, GIN, SLGAT, GNN, SimpleGINE
+from src.loss import GCODLoss
 from src.loadData import GraphDataset
+from sklearn.metrics import f1_score
+
 
 
 # def init_features(data):
 #     # data.x = torch.zeros(data.num_nodes, dtype=torch.long)
-#     data.x = torch.arange(data.num_nodes)
+#     data.x = torch.arange(data.num_nodes)  
 #     return data
+
 def init_features(data):
-    deg = torch.bincount(data.edge_index[0], minlength=data.num_nodes).unsqueeze(1).float()
-    noise = torch.randn_like(deg) * 0.1
-    data.x = deg + noise
+    data.x = torch.zeros(data.num_nodes, dtype=torch.long)
     return data
 
-
-# def label_smoothness_loss(predictions, edge_index):
-#     row, col = edge_index
-#     diff = predictions[row] - predictions[col]
-#     loss = torch.mean(torch.norm(diff, p=2, dim=1))
-#     return loss
-
-
-def train(data_loader, model, optimizer, criterion, device, save_checkpoints, checkpoint_path, current_epoch, alpha = 0.2):
+def train(data_loader, model, optimizer, criterion, device, save_checkpoints, checkpoint_path, current_epoch):
     model.train()
     total_loss = 0
+    total_ce = 0
+    total_dirichlet = 0
     for data in tqdm(data_loader, desc="Iterating training graphs", unit="batch"):
         data = data.to(device)
         optimizer.zero_grad()
-        output = model(data)
+        output, logits = model(data)
         loss = criterion(output, data.y)
-        #loss_smooth = label_smoothness_loss(node_logits, data.edge_index)
-        #loss = loss_cls + alpha*loss_smooth
+        #loss, ce_loss, dirichlet = criterion(output, data.y, logits, data.edge_index, data.batch, return_components=True)       
         loss.backward()
         optimizer.step()
         total_loss += loss.item()
+        # total_ce += ce_loss.item()
+        # total_dirichlet += dirichlet.item()
+
+        num_batches = len(data_loader)
+        avg_loss = total_loss / num_batches
+        avg_ce = total_ce / num_batches
+        avg_dirichlet = total_dirichlet / num_batches
 
     if save_checkpoints:
         checkpoint_file = f"{checkpoint_path}_epoch_{current_epoch + 1}.pth"
         torch.save(model.state_dict(), checkpoint_file)
         print(f"Checkpoint saved at {checkpoint_file}")
-    
-    return total_loss / len(data_loader)
+
+    #return avg_loss, avg_ce, avg_dirichlet
+    return total_loss
 
 
 def evaluate(data_loader, model, device, calculate_accuracy=False):
@@ -60,19 +63,66 @@ def evaluate(data_loader, model, device, calculate_accuracy=False):
     correct = 0
     total = 0
     predictions = []
+    true_labels = []
     with torch.no_grad():
         for data in tqdm(data_loader, desc="Iterating eval graphs", unit="batch"):
             data = data.to(device)
-            output= model(data)
+            output, _ = model(data)
             pred = output.argmax(dim=1)
             predictions.extend(pred.cpu().numpy())
-            if calculate_accuracy:
+
+            if data.y is not None:
+                true_labels.extend(data.y.cpu().tolist())
+
+            if calculate_accuracy and data.y is not None:
                 correct += (pred == data.y).sum().item()
                 total += data.y.size(0)
     if calculate_accuracy:
         accuracy = correct / total
-        return accuracy, predictions
-    return predictions
+        return accuracy, predictions, true_labels
+    return predictions, true_labels
+
+# def evaluate(data_loader, model, device, criterion=None, calculate_accuracy=False):
+#     model.eval()
+#     correct = 0
+#     total = 0
+#     predictions = []
+#     true_labels = []
+    
+#     total_loss = 0.0
+#     total_ce = 0.0
+#     total_dirichlet = 0.0
+#     num_batches = 0
+
+#     with torch.no_grad():
+#         for data in tqdm(data_loader, desc="Iterating eval graphs", unit="batch"):
+#             data = data.to(device)
+#             output, logits = model(data)
+#             pred = output.argmax(dim=1)
+
+#             predictions.extend(pred.cpu().numpy())
+#             true_labels.extend(data.y.cpu().tolist())
+
+#             if calculate_accuracy:
+#                 correct += (pred == data.y).sum().item()
+#                 total += data.y.size(0)
+
+#             if criterion is not None:
+#                 loss, ce_loss, dirichlet = criterion(
+#                     output, data.y, logits, data.edge_index, data.batch, return_components=True
+#                 )
+#                 total_loss += loss.item()
+#                 total_ce += ce_loss.item()
+#                 total_dirichlet += dirichlet.item()
+#                 num_batches += 1
+
+#     accuracy = correct / total if calculate_accuracy else None
+#     avg_loss = total_loss / num_batches if num_batches > 0 else None
+#     avg_ce = total_ce / num_batches if num_batches > 0 else None
+#     avg_dirichlet = total_dirichlet / num_batches if num_batches > 0 else None
+
+#     #return accuracy, predictions, true_labels, avg_loss, avg_ce, avg_dirichlet
+#     return accuracy, predictions, true_labels
 
 def save_predictions(predictions, test_path):
     script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -116,12 +166,14 @@ def plot_training_progress(train_losses, train_accuracies, output_dir):
     plt.savefig(os.path.join(output_dir, "training_progress.png"))
     plt.close()
 
+
 def main(args):
 
     set_seed()
+    os.environ["CUDA_VISIBLE_DEVICES"] = "0"
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     # Parameters for the GCN model
-    input_dim = 1  # Example input feature dimension (you can adjust this)
+    input_dim = 512 # Example input feature dimension (you can adjust this)
     hidden_dim = 64
     output_dim = 6  # Number of classes
 
@@ -131,17 +183,19 @@ def main(args):
     # Initialize the model, optimizer, and loss criterion
     if args.gnn == 'simple':
          model = SimpleGCN(input_dim, hidden_dim, output_dim).to(device)
-    elif args.gnn == 'mnlp':
-         model = CulturalClassificationGNN(input_dim, hidden_dim, output_dim).to(device)
+    elif args.gnn == 'simple_gine':
+         model = SimpleGINE(hidden_dim, output_dim).to(device)
     elif args.gnn == 'gin':
          model = GIN(input_dim, hidden_dim, output_dim).to(device)
-    elif args.gnn == 'papergin':
-         model = paperGIN(input_dim, hidden_dim, output_dim).to(device)
-    elif args.gnn == 'robgin':
-         model = RobustGIN(input_dim, hidden_dim, output_dim).to(device)
+    elif args.gnn == 'slgat':
+         model = SLGAT(input_dim, hidden_dim, output_dim).to(device)
+    elif args.gnn == 'gnn':
+         model = GNN(num_class=output_dim, emb_dim=input_dim, residual=True, graph_pooling='attention', JK='last').to(device)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-    criterion = torch.nn.CrossEntropyLoss(label_smoothing=0.1)
+    criterion = torch.nn.CrossEntropyLoss()
+    #criterion = GCODLoss(lambda_smoothness=0.1)
+
 
     test_dir_name = os.path.basename(os.path.dirname(args.test_path))
 
@@ -167,6 +221,10 @@ def main(args):
 
     # Train dataset and loader (if train_path is provided)
     if args.train_path:
+
+        # train_dataset = GraphDataset(args.train_path, transform=init_features)
+        # train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
+
         train_dataset = GraphDataset(args.train_path, transform=init_features)
 
         val_ratio = 0.2
@@ -174,12 +232,18 @@ def main(args):
         num_train = len(train_dataset) - num_val
         train_set, val_set = random_split(train_dataset, [num_train, num_val])
 
-        train_loader = DataLoader(train_set, batch_size=32, shuffle=True)
-        val_loader = DataLoader(val_set, batch_size=32, shuffle=False )
+        train_loader = DataLoader(train_set, batch_size=64, shuffle=True)
+        val_loader = DataLoader(val_set, batch_size=64, shuffle=False )
 
         # Training loop
-        num_epochs = 200
-        best_accuracy = 0.0
+        num_epochs = 700        
+        patience = 25
+        epochs_without_improvement = 0
+        best_val_f1 = 0.0
+        best_val_loss = 0.0
+        best_val_dirichlet = 0.0
+        train_losses = []
+        train_accuracies = []
         train_losses = []
         train_accuracies = []
 
@@ -189,12 +253,7 @@ def main(args):
         else:
             checkpoint_intervals = [num_epochs]
 
-                                                        ###### TRAIN LOOP #####        
-        patience = 30
-        epochs_without_improvement = 0
-        best_val_accuracy = 0.0
-        train_losses = []
-        train_accuracies = []
+
 
         for epoch in range(num_epochs):
             train_loss = train(
@@ -204,15 +263,26 @@ def main(args):
                 current_epoch=epoch
             )
 
-            train_acc, _ = evaluate(train_loader, model, device, calculate_accuracy=True)
-            val_acc, _ = evaluate(val_loader, model, device, calculate_accuracy=True)
-            print(f"Epoch {epoch + 1}/{num_epochs}, Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}, Val Acc: {val_acc:.4f}")
+            #train_acc, _, _, _, _, _ = evaluate(train_loader, model, device, calculate_accuracy=True)
+            train_acc, _, _ = evaluate(train_loader, model, device, calculate_accuracy=True)
+            # val_acc, val_preds, val_labels, val_loss, val_ce, val_dirichlet = evaluate(
+            #     val_loader, model, device, criterion=criterion, calculate_accuracy=True
+            # )  
+            val_acc, val_preds, val_labels = evaluate(
+                val_loader, model, device, calculate_accuracy=True
+            )           
+            val_f1 = f1_score(val_labels, val_preds, average='macro')  
+            # print(f"Epoch {epoch + 1}/{num_epochs}, Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}, VAL ACC: {val_acc:.4f}, F1_SCORE: {val_f1:.4f}, CE: {train_ce:.4f}, Val CE: {val_ce:.4f}, Val Dirichlet: {val_dirichlet:.4f}")
+            print(f"Epoch {epoch + 1}/{num_epochs}, Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}, VAL ACC: {val_acc:.4f}, F1_SCORE: {val_f1:.4f}")
 
+            
+            # Save logs for training progress
             train_losses.append(train_loss)
             train_accuracies.append(train_acc)
-
-            if val_acc > best_val_accuracy:
-                best_val_accuracy = val_acc
+            
+            # Save the best model
+            if val_f1 > best_val_f1:
+                best_val_f1 = val_f1
                 epochs_without_improvement = 0
                 torch.save(model.state_dict(), best_checkpoint_path)
                 print(f"✅ Best model updated (Val Acc: {val_acc:.4f}) and saved at {best_checkpoint_path}")
@@ -220,15 +290,14 @@ def main(args):
                 epochs_without_improvement += 1
                 print(f"No improvement in validation accuracy for {epochs_without_improvement} epoch(s)")
 
-            plot_training_progress(train_losses, train_accuracies, os.path.join(logs_folder, "plots"))
             if epochs_without_improvement >= patience:
                 print(f"🛑 Early stopping triggered after {epoch + 1} epochs!")
                 break
-                
+        plot_training_progress(train_losses, train_accuracies, os.path.join(logs_folder, "plots"))
 
     # Evaluate and save test predictions
     model.load_state_dict(torch.load(best_checkpoint_path))
-    predictions = evaluate(test_loader, model, device, calculate_accuracy=False)
+    predictions, _ = evaluate(test_loader, model, device, calculate_accuracy=False)
     save_predictions(predictions, args.test_path)
 
 
@@ -238,7 +307,7 @@ if __name__ == "__main__":
     parser.add_argument("--test_path", type=str, required=True, help="Path to the test dataset.")
     parser.add_argument("--num_checkpoints", type=int, help="Number of checkpoints to save during training.")
     # parser.add_argument('--device', type=int, default=1, help='which gpu to use if any (default: 0)')
-    parser.add_argument('--gnn', type=str, default='simple', help='GNN simple, mnlp, gin (default: simple)')
+    parser.add_argument('--gnn', type=str, default='simple', help='GNN simple, mnlp (default: simple)')
     # parser.add_argument('--drop_ratio', type=float, default=0.5, help='dropout ratio (default: 0.5)')
     # parser.add_argument('--num_layer', type=int, default=5, help='number of GNN message passing layers (default: 5)')
     # parser.add_argument('--emb_dim', type=int, default=300, help='dimensionality of hidden units in GNNs (default: 300)')

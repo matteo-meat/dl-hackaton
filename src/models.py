@@ -325,9 +325,9 @@ class SimpleGINE(torch.nn.Module):
         x = F.relu(x)
         x = self.conv2(x, edge_index, edge_attr)
 
-        logits = x
+        node_embeddings = x
         x = global_mean_pool(x, batch)
 
         x = self.lin(x)
 
-        return x, logits
+        return x, node_embeddings
