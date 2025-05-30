@@ -197,7 +197,7 @@ class SimpleGINE(torch.nn.Module):
 class GINEPaper(torch.nn.Module):
 
     def __init__(self, hidden_dim, output_dim, drop_ratio = 0.5):
-        super(SimpleGINE, self).__init__()
+        super(GINEPaper, self).__init__()
 
         self.drop_ratio = drop_ratio
 
