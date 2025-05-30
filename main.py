@@ -11,9 +11,11 @@ import pandas as pd
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 from sklearn.metrics import f1_score
+import torch.optim.lr_scheduler as lr_scheduler
+
 
 from src.utils import set_seed, plot_training_progress, save_predictions
-from src.models import SimpleGCN, GNN, SimpleGINE, EnhancedGINEWithVN
+from src.models import SimpleGCN, GNN, SimpleGINE, EnhancedGINEWithVN, SpectralGIN
 from src.loadData import GraphDataset
 from src.loss import GCODLoss
 
@@ -132,16 +134,24 @@ def main(args):
     elif args.gnn == 'ena_gine':
          model = EnhancedGINEWithVN(hidden_dim, output_dim).to(device)
     elif args.gnn == 'gin':
-        model = GNN(gnn_type = 'gin', num_class = output_dim, num_layer = args.num_layer, emb_dim = args.emb_dim, drop_ratio = args.drop_ratio, virtual_node = False).to(device)
+        model = GNN(gnn_type = 'gin', num_class = output_dim, num_layer = args.num_layer, emb_dim = args.emb_dim, drop_ratio = args.drop_ratio, virtual_node = True).to(device)
     elif args.gnn == 'simple_gine':
         model = SimpleGINE(hidden_dim, output_dim, args.drop_ratio).to(device)
+    elif args.gnn == 'spectral_gin':
+        model = SpectralGIN(input_dim, hidden_dim, output_dim).to(device)
     
     if args.use_gcod:
         criterion = GCODLoss(lambda_smoothness=args.gcod_lambda, warmup_epochs=args.gcod_warmup_epochs)
     else:
-        criterion = torch.nn.CrossEntropyLoss()
+        criterion = torch.nn.CrossEntropyLoss(label_smoothing=0.1)
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    # scheduler = lr_scheduler.CosineAnnealingLR(
+    #     optimizer,
+    #     T_max=args.epochs,       # one cycle over all epochs
+    #     eta_min=1e-6             # minimal LR at the end of training
+    # )
+
     
     
     # ========================
@@ -251,7 +261,9 @@ def main(args):
             if epochs_without_improvement >= patience:
                 print(f"🛑 Early stopping triggered after {epoch + 1} epochs!🛑")
                 break
-        
+            
+            #scheduler.step()
+            #print(f"           | LR now: {scheduler.get_last_lr()[0]:.2e}")
         # Plot training progress
         plot_training_progress(train_losses, train_accuracies, train_f1s, val_losses, val_accuracies, val_f1s, os.path.join(logs_folder, "plots"))
 
@@ -266,10 +278,12 @@ def main(args):
 if __name__ == "__main__":
     num_epochs = 700
     patience = 25
-    batch_size = 128
+    batch_size = 32
     use_gcod = False
     gcod_lambda = 1e-4
     warmup_epochs = 30
+    learning_rate = 1e-3
+    weight_decay = 1e-4
 
     parser = argparse.ArgumentParser(description="Train and evaluate GNN models on graph datasets.")
     parser.add_argument("--train_path", type=str, help="Path to the training dataset (optional).")
@@ -286,6 +300,8 @@ if __name__ == "__main__":
     parser.add_argument('--use_gcod', action='store_true', default=use_gcod, help='Use GCOD loss instead of CrossEntropyLoss')
     parser.add_argument('--gcod_lambda', type=float, default=gcod_lambda,help="final smoothness weight λ (default: 1e-2)")
     parser.add_argument("--gcod_warmup_epochs", type=int, default=warmup_epochs)
+    parser.add_argument('--lr',type=float,default=learning_rate,help='Initial learning rate for the optimizer')
+    parser.add_argument('--weight_decay',type=float,default=weight_decay,help='Weight decay (L2 regularization) for the optimizer')
 
     args = parser.parse_args()
     main(args)

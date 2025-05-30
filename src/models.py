@@ -120,7 +120,7 @@ class GNN(torch.nn.Module):
 
         h_graph = self.pool(h_node, batched_data.batch)
 
-        return self.graph_pred_linear(h_graph)
+        return self.graph_pred_linear(h_graph), h_graph
     
 
 class SimpleGINE(torch.nn.Module):
@@ -222,3 +222,57 @@ class EnhancedGINEWithVN(torch.nn.Module):
         out = self.lin(graph_repr) 
 
         return out, h
+
+class SpectralGIN(torch.nn.Module):
+    """
+    A GIN-based classifier that, at each layer, removes
+    negative eigenvalues from its final linear projection
+    weight matrix to promote smoothing (Method 1).
+    """
+    def __init__(self, input_dim, hidden_dim, output_dim, num_layers=5):
+        super().__init__()
+        self.num_layers = num_layers
+
+        # Initial embedding
+        self.embedding = nn.Embedding(1, input_dim)
+
+        # Build GIN layers and per-layer projections
+        self.convs = nn.ModuleList()
+        self.projs = nn.ModuleList()
+        for i in range(num_layers):
+            in_dim  = input_dim  if i == 0 else hidden_dim
+            mlp = nn.Sequential(
+                nn.Linear(in_dim, hidden_dim),
+                nn.ReLU(),
+                nn.Linear(hidden_dim, hidden_dim),
+            )
+            self.convs.append(GINConv(mlp))
+            # This is W₂ in the paper (Eq. 15–17)
+            self.projs.append(nn.Linear(hidden_dim, hidden_dim, bias=False))
+
+        # Final classifier
+        self.classifier = nn.Linear(hidden_dim, output_dim)
+
+    def forward(self, data):
+        x, edge_index, batch = data.x, data.edge_index, data.batch
+        x = self.embedding(x).squeeze(-2)  # [N, input_dim]
+
+        for conv, proj in zip(self.convs, self.projs):
+            # 1) GIN message-passing + ReLU
+            x = conv(x, edge_index)
+            x = F.relu(x)
+
+            # 2) Spectral projection of the linear weight matrix
+            W = proj.weight  # [hidden_dim, hidden_dim]
+            # eigendecompose (symmetric assumed)
+            eigvals, eigvecs = torch.linalg.eigh(W)
+            # zero out negative eigenvalues
+            eigvals_clipped = F.relu(eigvals)
+            # reconstruct W⁺ = Φ [µ]₊ Φᵀ
+            W_pos = (eigvecs @ torch.diag(eigvals_clipped) @ eigvecs.T)
+            # apply projected linear
+            x = x @ W_pos.T
+            h = x
+        # global graph-level sum-pooling
+        g = global_add_pool(x, batch)
+        return self.classifier(g), h
