@@ -57,13 +57,13 @@ class SimpleGIN(torch.nn.Module):
         nn1 = nn.Sequential(nn.Linear(hidden_dim, hidden_dim), 
                             nn.ReLU(),
                             nn.Linear(hidden_dim, hidden_dim))
-        self.conv1 = GINConv(nn1, edge_dim = 7)
+        self.conv1 = GINConv(nn1)
 
         nn2 = nn.Sequential(nn.Linear(hidden_dim, hidden_dim), 
                             nn.ReLU(),
                             nn.Linear(hidden_dim, hidden_dim))
         
-        self.conv2 = GINConv(nn2, edge_dim = 7)
+        self.conv2 = GINConv(nn2)
 
         self.lin = nn.Linear(hidden_dim, output_dim)
 
