@@ -72,9 +72,9 @@ class SimpleGIN(torch.nn.Module):
 
         x = self.node_embedding(x)
 
-        x = self.conv1(x, edge_index, edge_attr)
+        x = self.conv1(x, edge_index)
         x = F.relu(x)
-        x = self.conv2(x, edge_index, edge_attr)
+        x = self.conv2(x, edge_index)
 
         x = global_mean_pool(x, batch)
 
