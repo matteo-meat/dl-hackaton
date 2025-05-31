@@ -47,7 +47,7 @@ Three loss options are available:
 noise-resistant loss in Graph Neural Networks](https://arxiv.org/pdf/2412.08419)
 
 Using the optional arguments, one can launch the script specifying the parameters described above.  
-Checkpoints are saved every patience/5 epochs (if num_epochs is not passed as argument, the default value of 50 will be used) in the `/checkpoints/<dataset_name>/` folder  
+Checkpoints are saved every patience/5 epochs (if num_epochs is not passed as argument, the default value of 50 will be used) in the `/checkpoints/<dataset_name>/`  
 Plots of the train (and validation, if the train_val_split is enabled) loss, accuracy and f1-score are saved in `/logs/<dataset_name>/`  
 The auxiliary code is saved in `/src`  
 The results of the runs are saved in `/submission`
