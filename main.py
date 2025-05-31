@@ -214,7 +214,7 @@ def main(args):
     output_dim = 6  # Number of classes
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    num_checkpoints = args.num_checkpoints if args.num_checkpoints else 5
+    checkpoint_interval = (args.patience // 5) if args.patience else args.epochs // 5
 
     # Initialize the model, optimizer, and loss criterion
     if args.gnn == 'def_gcn':
@@ -298,12 +298,6 @@ def main(args):
         # best_val_loss = np.inf
         best_val_acc = 0
 
-        # Calculate intervals for saving checkpoints
-        if num_checkpoints > 1:
-            checkpoint_intervals = [int((i + 1) * num_epochs / num_checkpoints) for i in range(num_checkpoints)]
-        else:
-            checkpoint_intervals = [num_epochs]
-
         if args.early_stopping:
             patience = args.patience
             epochs_without_improvement = 0
@@ -313,7 +307,7 @@ def main(args):
                 train_loader, model, optimizer, 
                 criterion = criterion if args.criterion != "gcod" else criterion_train, 
                 device = device,
-                save_checkpoints = (epoch + 1 in checkpoint_intervals),
+                save_checkpoints = ((epoch + 1) % checkpoint_interval),
                 checkpoint_path = os.path.join(checkpoints_folder, f"model_{test_dir_name}"),
                 current_epoch = epoch
             )
@@ -374,9 +368,9 @@ if __name__ == "__main__":
     parser.add_argument('--num_layer', type=int, default=5, help='number of GNN message passing layers (default: 5)')
     parser.add_argument('--emb_dim', type=int, default=300, help='dimensionality of hidden units in GNNs (default: 300)')
     parser.add_argument('--batch_size', type=int, default=32, help='input batch size for training (default: 32)')
-    parser.add_argument('--epochs', type=int, default=50, help='number of epochs to train (default: 50)')
+    parser.add_argument('--epochs', type=int, default=1000, help='number of epochs to train (default: 1000)')
     parser.add_argument('--early_stopping', action='store_true', default=False, help='early stopping or not (default: False)')
-    parser.add_argument('--patience', type=int, default=25, help='max number of epochs without training improvements (default: 25)')
+    parser.add_argument('--patience', type=int, default=50, help='max number of epochs without training improvements (default: 50)')
     
     args = parser.parse_args()
     main(args)
