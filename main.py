@@ -64,21 +64,18 @@ def train(data_loader, model, optimizer, criterion, device, save_checkpoints, ch
         indices = data.idx if hasattr(data, "idx") else None
 
         if isinstance(criterion, GCODLoss):
-            preds = []
-            preds.extend(output.argmax(dim = 1).cpu().numpy())
-            labels = []
-            labels.extend(data.y.cpu().numpy())
+            preds = output.argmax(dim = 1).cpu().numpy()
+            labels = data.y.cpu().numpy()
 
             loss, L2 = criterion(output, data.y, indices)
 
             batch_size = len(indices)
             L2_grad = torch.zeros_like(criterion.u[indices])
-            for i in range(batch_size):
-                if preds[i] == labels[i]:
-                    L2_grad[i] = (2 / criterion.num_classes) * criterion.u[indices][i] / batch_size
-                else:
-                    L2_grad[i] = (2 / criterion.num_classes) * (criterion.u[indices][i] - 1) / batch_size
             
+            correct_mask = torch.tensor(preds == labels, device = device)
+            L2_grad[correct_mask] = (2 / criterion.num_classes) * criterion.u[indices][correct_mask] / batch_size
+            L2_grad[~correct_mask] = (2 / criterion.num_classes) * (criterion.u[indices][~correct_mask] - 1) / batch_size
+
             criterion.update_u(indices, L2_grad)
         else:
             loss = criterion(output, data.y)
