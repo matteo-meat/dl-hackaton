@@ -26,11 +26,12 @@ class FocalLoss(nn.Module):
 class GCODLoss(torch.nn.Module):
     def __init__(self, num_samples, num_classes, device, u_lr=1.0):
         super().__init__()
-        self.u = torch.zeros(num_samples, device=device, requires_grad=False)
+        self.u = torch.full((num_samples,), 0.5, device=device, requires_grad=False)
         self.num_classes = num_classes
         self.u_lr = u_lr
         self.a_train = 0.0  # Updated after each epoch
         self.num_samples = num_samples
+        self.eps = 1e-7  # Small epsilon for numerical stability
 
     def forward(self, outputs, labels, indices):
         
@@ -44,12 +45,14 @@ class GCODLoss(torch.nn.Module):
 
         # Compute soft labels y_tilde_B
         term1 = (1 - u_B.unsqueeze(1)) * y_B
-        term2 = u_B.unsqueeze(1) * (1 - y_B) / (self.num_classes - 1)
+        term2 = u_B.unsqueeze(1) * (1 - y_B) / max(self.num_classes - 1, 1)
         y_tilde_B = term1 + term2
 
         # L1: Adjusted outputs and cross-entropy
         adjusted_outputs = outputs + self.a_train * u_B.unsqueeze(1) * y_B
-        L1 = - (y_tilde_B * F.log_softmax(adjusted_outputs, dim=1)).sum(dim=1).mean()
+        log_probs = F.log_softmax(adjusted_outputs, dim=1)
+        L1 = - (y_tilde_B * log_probs).sum(dim=1)
+        L1 = L1.mean()
 
         # L2: Prediction consistency term
         preds = torch.argmax(outputs, dim=1)
@@ -59,13 +62,19 @@ class GCODLoss(torch.nn.Module):
 
         # L3: KL divergence regularization
         true_logits = (outputs * y_B).sum(dim=1)
-        p = torch.sigmoid(true_logits)
-        u_B_clamped = u_B.clamp(min=1e-8, max=1-1e-8)
-        q = torch.sigmoid(-torch.log(u_B_clamped))
-        
-        term1 = p * torch.log(p / q)
-        term2 = (1 - p) * torch.log((1 - p) / (1 - q))
-        L3 = (1 - self.a_train) * (term1 + term2).mean()
+        p = torch.sigmoid(true_logits).clamp(self.eps, 1 - self.eps)
+        u_B_clamped = u_B.clamp(self.eps, 1 - self.eps)
+        q = torch.sigmoid(-torch.log(u_B_clamped)).clamp(self.eps, 1 - self.eps)
+
+        P = torch.stack([p, 1 - p], dim=1)
+        Q = torch.stack([q, 1 - q], dim=1)
+
+        L3 = (1 - self.a_train) * F.kl_div(
+            torch.log(P), 
+            Q, 
+            reduction='batchmean',
+            log_target=False
+        )
 
         total_loss = L1 + L3
         return total_loss, L2

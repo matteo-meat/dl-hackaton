@@ -47,18 +47,18 @@ def train(data_loader, model, optimizer, criterion, device, save_checkpoints, ch
         indices = data.idx if hasattr(data, "idx") else None
 
         if isinstance(criterion, GCODLoss):
-            preds = output.argmax(dim = 1).cpu().numpy()
-            labels = data.y.cpu().numpy()
-
             loss, L2 = criterion(output, data.y, indices)
-
+            
+            # Vectorized gradient computation
+            preds = output.argmax(dim=1)
+            correct_mask = (preds == data.y)
             batch_size = len(indices)
+            
+            # Compute L2 gradient using tensor operations
             L2_grad = torch.zeros_like(criterion.u[indices])
-
-            correct_mask = torch.tensor(preds == labels, device = device)
             L2_grad[correct_mask] = (2 / criterion.num_classes) * criterion.u[indices][correct_mask] / batch_size
             L2_grad[~correct_mask] = (2 / criterion.num_classes) * (criterion.u[indices][~correct_mask] - 1) / batch_size
-
+            
             criterion.update_u(indices, L2_grad)
         else:
             loss = criterion(output, data.y)
@@ -247,7 +247,7 @@ def main(args):
     elif args.gnn == 'gcn_virt':
         model = GNN(gnn_type = 'gcn', num_class = output_dim, num_layer = args.num_layer, emb_dim = args.emb_dim, drop_ratio = args.drop_ratio, virtual_node = True).to(device)
     elif args.gnn == "turbo":
-        model = TurboGNN()
+        model = TurboGNN().to(device)
     # elif args.gnn == 'gine_paper':
     #     model = GINEPaper(hidden_dim, output_dim, args.drop_ratio).to(device)
     # elif args.gnn == 'mnlp':
