@@ -18,36 +18,19 @@ from src.loss import FocalLoss, GCODLoss
 from src.loadData import GraphDataset
 from src.models import DefaultGCN, DefaultGIN, SimpleGIN, SimpleGINE, GNN, TurboGNN, GINEPaper, CulturalClassificationGNN
 
-def create_split_datasets(full_dataset, val_ratio=0.2):
-    num_val = int(len(full_dataset) * val_ratio)
-    num_train = len(full_dataset) - num_val
+class ResetIndexDataset(torch.utils.data.Dataset):
+    def __init__(self, subset):
+        self.subset = subset
+        self.original_indices = list(range(len(subset)))
+        
+    def __len__(self):
+        return len(self.subset)
     
-    # Create indices for split
-    indices = list(range(len(full_dataset)))
-    np.random.shuffle(indices)
-    train_indices = indices[:num_train]
-    val_indices = indices[num_train:]
-    
-    # Create subset datasets with remapped indices
-    class SubsetDataset(Dataset):
-        def __init__(self, parent_dataset, indices):
-            self.parent = parent_dataset
-            self.indices = indices
-            self.remapped_indices = list(range(len(indices)))
-            
-        def len(self):
-            return len(self.indices)
-            
-        def get(self, idx):
-            data = self.parent.get(self.indices[idx])
-            # Remap index to new range
-            data.idx = self.remapped_indices[idx]
-            return data
-    
-    train_set = SubsetDataset(full_dataset, train_indices)
-    val_set = SubsetDataset(full_dataset, val_indices)
-    
-    return train_set, val_set, len(train_indices), len(val_indices)
+    def __getitem__(self, idx):
+        data = self.subset[idx]
+        # Reset index to new subset position
+        data.idx = self.original_indices[idx]
+        return data
 
 def init_features(data):
     data.x = torch.zeros(data.num_nodes, dtype=torch.long)

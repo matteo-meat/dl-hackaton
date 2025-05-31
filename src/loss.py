@@ -33,7 +33,10 @@ class GCODLoss(torch.nn.Module):
         self.num_samples = num_samples
 
     def forward(self, outputs, labels, indices):
-        indices = indices.long()
+        
+        if indices is None:
+            return torch.tensor(0.0), torch.tensor(0.0)
+        
         indices = torch.clamp(indices, 0, self.num_samples - 1)
 
         u_B = self.u[indices].detach()
@@ -68,6 +71,9 @@ class GCODLoss(torch.nn.Module):
         return total_loss, L2
 
     def update_u(self, indices, L2_grad):
+        if indices is None:
+            return
+        
         with torch.no_grad():
             indices = torch.clamp(indices.long(), 0, self.num_samples - 1)
             self.u[indices] -= self.u_lr * L2_grad
