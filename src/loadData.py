@@ -2,9 +2,7 @@ import gzip
 import json
 import torch
 from torch_geometric.data import Dataset, Data
-import os
 from tqdm import tqdm 
-from torch_geometric.loader import DataLoader
 
 class GraphDataset(Dataset):
     def __init__(self, filename, transform=None, pre_transform=None):

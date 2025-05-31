@@ -1,8 +1,6 @@
 import torch
 import random
 import numpy as np
-import tarfile
-import os
 
 def set_seed(seed=777):
     seed = seed

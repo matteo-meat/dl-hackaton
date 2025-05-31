@@ -2,7 +2,6 @@
 import torch
 from torch.utils.data import random_split
 from torch_geometric.loader import DataLoader
-from torch_geometric.data import Dataset, Data
 
 import os
 import logging
@@ -16,7 +15,7 @@ from sklearn.metrics import f1_score
 from src.utils import set_seed
 from src.loss import FocalLoss, GCODLoss
 from src.loadData import GraphDataset
-from src.models import DefaultGCN, DefaultGIN, SimpleGIN, SimpleGINE, GNN, TurboGNN, GINEPaper, CulturalClassificationGNN
+from src.models import DefaultGCN, DefaultGIN, SimpleGIN, SimpleGINE, TurboGNN
 
 class ResetIndexDataset(torch.utils.data.Dataset):
     def __init__(self, subset):
@@ -235,23 +234,11 @@ def main(args):
     elif args.gnn == 'def_gin':
          model = DefaultGIN(input_dim, hidden_dim, output_dim).to(device)
     elif args.gnn == 'simple_gin':
-        model = SimpleGIN(hidden_dim, output_dim, args.drop_ratio).to(device)
+        model = SimpleGIN(hidden_dim, output_dim).to(device)
     elif args.gnn == 'simple_gine':
-        model = SimpleGINE(hidden_dim, output_dim, args.drop_ratio).to(device)
-    elif args.gnn == 'gin_man':
-        model = GNN(gnn_type = 'gin', num_class = output_dim, num_layer = args.num_layer, emb_dim = args.emb_dim, drop_ratio = args.drop_ratio, virtual_node = False).to(device)
-    elif args.gnn == 'gcn_man':
-        model = GNN(gnn_type = 'gcn', num_class = output_dim, num_layer = args.num_layer, emb_dim = args.emb_dim, drop_ratio = args.drop_ratio, virtual_node = False).to(device)
-    elif args.gnn == 'gin_virt':
-        model = GNN(gnn_type = 'gin', num_class = output_dim, num_layer = args.num_layer, emb_dim = args.emb_dim, drop_ratio = args.drop_ratio, virtual_node = True).to(device)
-    elif args.gnn == 'gcn_virt':
-        model = GNN(gnn_type = 'gcn', num_class = output_dim, num_layer = args.num_layer, emb_dim = args.emb_dim, drop_ratio = args.drop_ratio, virtual_node = True).to(device)
+        model = SimpleGINE(hidden_dim, output_dim).to(device)
     elif args.gnn == "turbo":
         model = TurboGNN().to(device)
-    # elif args.gnn == 'gine_paper':
-    #     model = GINEPaper(hidden_dim, output_dim, args.drop_ratio).to(device)
-    # elif args.gnn == 'mnlp':
-    #      model = CulturalClassificationGNN(input_dim, hidden_dim, output_dim).to(device)
     
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
@@ -394,14 +381,9 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train and evaluate GNN models on graph datasets.")
     parser.add_argument("--train_path", type=str, help="Path to the training dataset (optional).")
     parser.add_argument("--test_path", type=str, required=True, help="Path to the test dataset.")
-    parser.add_argument("--num_checkpoints", type=int, help="Number of checkpoints to save during training.")
-    # parser.add_argument('--device', type=int, default=1, help='which gpu to use if any (default: 0)')
-    parser.add_argument('--gnn', type=str, default='def_gcn', help='GNN def_gcn, def_gin, simple_gin, simple_gine, gin_man, gcn_man, gin_virt, gcn_virt, turbo (default: def_gcn)')
+    parser.add_argument('--gnn', type=str, default='def_gcn', help='GNN def_gcn, def_gin, simple_gin, simple_gine, turbo (default: def_gcn)')
     parser.add_argument('--criterion', type=str, default='ce', help='Loss to use, ce, focal, gcod (default: ce)')
     parser.add_argument('--u_lr', type=float, default=1.0, help='Learning rate for u parameters')
-    parser.add_argument('--drop_ratio', type=float, default=0.5, help='dropout ratio (default: 0.5)')
-    parser.add_argument('--num_layer', type=int, default=5, help='number of GNN message passing layers (default: 5)')
-    parser.add_argument('--emb_dim', type=int, default=300, help='dimensionality of hidden units in GNNs (default: 300)')
     parser.add_argument('--batch_size', type=int, default=32, help='input batch size for training (default: 32)')
     parser.add_argument('--epochs', type=int, default=1000, help='number of epochs to train (default: 1000)')
     parser.add_argument('--early_stopping', action='store_true', default=False, help='early stopping or not (default: False)')
