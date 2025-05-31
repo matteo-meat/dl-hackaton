@@ -16,7 +16,7 @@ from sklearn.metrics import f1_score
 from src.utils import set_seed
 from src.loss import FocalLoss, GCODLoss
 from src.loadData import GraphDataset
-from src.models import DefaultGCN, DefaultGIN, SimpleGIN, SimpleGINE, GNN, GINEPaper, CulturalClassificationGNN
+from src.models import DefaultGCN, DefaultGIN, SimpleGIN, SimpleGINE, GNN, TurboGNN, GINEPaper, CulturalClassificationGNN
 
 def create_split_datasets(full_dataset, val_ratio=0.2):
     num_val = int(len(full_dataset) * val_ratio)
@@ -263,6 +263,8 @@ def main(args):
         model = GNN(gnn_type = 'gin', num_class = output_dim, num_layer = args.num_layer, emb_dim = args.emb_dim, drop_ratio = args.drop_ratio, virtual_node = True).to(device)
     elif args.gnn == 'gcn_virt':
         model = GNN(gnn_type = 'gcn', num_class = output_dim, num_layer = args.num_layer, emb_dim = args.emb_dim, drop_ratio = args.drop_ratio, virtual_node = True).to(device)
+    elif args.gnn == "turbo":
+        model = TurboGNN()
     # elif args.gnn == 'gine_paper':
     #     model = GINEPaper(hidden_dim, output_dim, args.drop_ratio).to(device)
     # elif args.gnn == 'mnlp':
@@ -403,7 +405,7 @@ if __name__ == "__main__":
     parser.add_argument("--test_path", type=str, required=True, help="Path to the test dataset.")
     parser.add_argument("--num_checkpoints", type=int, help="Number of checkpoints to save during training.")
     # parser.add_argument('--device', type=int, default=1, help='which gpu to use if any (default: 0)')
-    parser.add_argument('--gnn', type=str, default='def_gcn', help='GNN def_gcn, def_gin, simple_gin, simple_gine, gin_man, gcn_man, gin_virt, gcn_virt (default: def_gcn)')
+    parser.add_argument('--gnn', type=str, default='def_gcn', help='GNN def_gcn, def_gin, simple_gin, simple_gine, gin_man, gcn_man, gin_virt, gcn_virt, turbo (default: def_gcn)')
     parser.add_argument('--criterion', type=str, default='ce', help='Loss to use, ce, focal, gcod (default: ce)')
     parser.add_argument('--u_lr', type=float, default=1.0, help='Learning rate for u parameters')
     parser.add_argument('--drop_ratio', type=float, default=0.5, help='dropout ratio (default: 0.5)')
