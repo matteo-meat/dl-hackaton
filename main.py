@@ -287,8 +287,14 @@ def main(args):
         print(f"Full train set len: {len(train_dataset)}")
 
         if args.train_val_split:
-            train_set, val_set, num_train_samples, num_val_samples = create_split_datasets(train_dataset, val_ratio = 0.2)
-            print(f"Len of subsets: {num_train_samples, num_val_samples}")
+            val_ratio = 0.2
+            num_val = int(len(train_dataset) * val_ratio)
+            num_train = len(train_dataset) - num_val
+            train_sub, val_sub = random_split(train_dataset, [num_train, num_val])
+
+            train_set = ResetIndexDataset(train_sub)
+            val_set = ResetIndexDataset(val_sub)
+
         
         if args.criterion == "ce":
             criterion = torch.nn.CrossEntropyLoss(label_smoothing = 0.2)
@@ -296,6 +302,8 @@ def main(args):
             criterion = FocalLoss()
         elif args.criterion == "gcod":
             if args.train_val_split:
+                num_train_samples = len(train_set)
+                num_val_samples = len(val_set)
                 criterion_train = GCODLoss(num_train_samples, output_dim, device, u_lr = args.u_lr )
                 criterion_val = GCODLoss(num_val_samples, output_dim, device, u_lr = args.u_lr)
             else:
