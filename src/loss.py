@@ -30,8 +30,12 @@ class GCODLoss(torch.nn.Module):
         self.num_classes = num_classes
         self.u_lr = u_lr
         self.a_train = 0.0  # Updated after each epoch
+        self.num_samples = num_samples
 
     def forward(self, outputs, labels, indices):
+        indices = indices.long()
+        indices = torch.clamp(indices, 0, self.num_samples - 1)
+
         u_B = self.u[indices].detach()
         y_B = F.one_hot(labels, num_classes=self.num_classes).float()
 
@@ -65,6 +69,7 @@ class GCODLoss(torch.nn.Module):
 
     def update_u(self, indices, L2_grad):
         with torch.no_grad():
+            indices = torch.clamp(indices.long(), 0, self.num_samples - 1)
             self.u[indices] -= self.u_lr * L2_grad
             self.u[indices] = self.u[indices].clamp(0, 1)
 

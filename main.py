@@ -2,6 +2,7 @@
 import torch
 from torch.utils.data import random_split
 from torch_geometric.loader import DataLoader
+from torch_geometric.data import Dataset, Data
 
 import os
 import logging
@@ -17,6 +18,36 @@ from src.loss import FocalLoss, GCODLoss
 from src.loadData import GraphDataset
 from src.models import DefaultGCN, DefaultGIN, SimpleGIN, SimpleGINE, GNN, GINEPaper, CulturalClassificationGNN
 
+def create_split_datasets(full_dataset, val_ratio=0.2):
+    num_val = int(len(full_dataset) * val_ratio)
+    num_train = len(full_dataset) - num_val
+    
+    # Create indices for split
+    indices = list(range(len(full_dataset)))
+    np.random.shuffle(indices)
+    train_indices = indices[:num_train]
+    val_indices = indices[num_train:]
+    
+    # Create subset datasets with remapped indices
+    class SubsetDataset(Dataset):
+        def __init__(self, parent_dataset, indices):
+            self.parent = parent_dataset
+            self.indices = indices
+            self.remapped_indices = list(range(len(indices)))
+            
+        def len(self):
+            return len(self.indices)
+            
+        def get(self, idx):
+            data = self.parent.get(self.indices[idx])
+            # Remap index to new range
+            data.idx = self.remapped_indices[idx]
+            return data
+    
+    train_set = SubsetDataset(full_dataset, train_indices)
+    val_set = SubsetDataset(full_dataset, val_indices)
+    
+    return train_set, val_set
 
 def init_features(data):
     data.x = torch.zeros(data.num_nodes, dtype=torch.long)
@@ -270,10 +301,7 @@ def main(args):
         train_dataset = GraphDataset(args.train_path, transform=init_features)
 
         if args.train_val_split:
-            val_ratio = 0.2
-            num_val = int(len(train_dataset) * val_ratio)
-            num_train = len(train_dataset) - num_val
-            train_set, val_set = random_split(train_dataset, [num_train, num_val])
+            train_set, val_set = create_split_datasets(train_dataset, val_ratio = 0.2)
         
         if args.criterion == "ce":
             criterion = torch.nn.CrossEntropyLoss(label_smoothing = 0.2)

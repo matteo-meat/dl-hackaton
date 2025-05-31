@@ -11,12 +11,15 @@ class GraphDataset(Dataset):
         self.raw = filename
         self.graphs = self.loadGraphs(self.raw)
         super().__init__(None, transform, pre_transform)
+        self.original_indices = list(range(len(self.graphs)))
 
     def len(self):
         return len(self.graphs)
 
     def get(self, idx):
-        return self.graphs[idx]
+        data = self.graphs[idx]
+        data.idx = self.original_indices[idx]
+        return data
 
     @staticmethod
     def loadGraphs(path):
