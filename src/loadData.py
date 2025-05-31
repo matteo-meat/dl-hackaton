@@ -25,8 +25,10 @@ class GraphDataset(Dataset):
         with gzip.open(path, "rt", encoding="utf-8") as f:
             graphs_dicts = json.load(f)
         graphs = []
-        for graph_dict in tqdm(graphs_dicts, desc="Processing graphs", unit="graph"):
-            graphs.append(dictToGraphObject(graph_dict))
+        for i, graph_dict in enumerate(tqdm(graphs_dicts, desc="Processing graphs", unit="graph")):
+            data = dictToGraphObject(graph_dict)
+            data.idx = i
+            graphs.append(data)
         return graphs
 
 

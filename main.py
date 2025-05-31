@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import f1_score
 
 from src.utils import set_seed
-from src.loss import FocalLoss
+from src.loss import FocalLoss, GCODLoss
 from src.loadData import GraphDataset
 from src.models import DefaultGCN, DefaultGIN, SimpleGIN, SimpleGINE, GNN, GINEPaper, CulturalClassificationGNN
 
@@ -30,7 +30,28 @@ def train(data_loader, model, optimizer, criterion, device, save_checkpoints, ch
         data = data.to(device)
         optimizer.zero_grad()
         output = model(data)
-        loss = criterion(output, data.y)
+        indices = data.idx if hasattr(data, "idx") else None
+
+        if isinstance(criterion, GCODLoss):
+            preds = []
+            preds.extend(output.argmax(dim = 1).cpu().numpy())
+            labels = []
+            labels.extend(data.y.cpu().numpy())
+
+            loss, L2 = criterion(output, data.y, indices)
+
+            batch_size = len(indices)
+            L2_grad = torch.zeros_like(criterion.u[indices])
+            for i in range(batch_size):
+                if preds[i] == labels[i]:
+                    L2_grad[i] = (2 / criterion.num_classes) * criterion.u[indices][i] / batch_size
+                else:
+                    L2_grad[i] = (2 / criterion.num_classes) * (criterion.u[indices][i] - 1) / batch_size
+            
+            criterion.update_u(indices, L2_grad)
+        else:
+            loss = criterion(output, data.y)
+
         loss.backward()
         optimizer.step()
         total_loss += loss.item()
@@ -42,7 +63,25 @@ def train(data_loader, model, optimizer, criterion, device, save_checkpoints, ch
     
     return total_loss / len(data_loader)
 
-def evaluate_training(data_loader, model, criterion, device):
+def evaluate_training(data_loader, model, device):
+    model.eval()
+    correct = 0
+    total = 0
+    predictions = []
+    labels = []
+    with torch.no_grad():
+        for data in tqdm(data_loader, desc="Evaluating training graphs", unit="batch"):
+            data = data.to(device)
+            output = model(data)
+            pred = output.argmax(dim=1)
+            predictions.extend(pred.cpu().numpy())
+            labels.extend(data.y.cpu().numpy())
+            correct += (pred == data.y).sum().item()
+            total += data.y.size(0)
+    accuracy = correct / total
+    return predictions, labels, accuracy
+
+def evaluate_validation(data_loader, model, criterion, device):
     model.eval()
     correct = 0
     total = 0
@@ -50,11 +89,18 @@ def evaluate_training(data_loader, model, criterion, device):
     labels = []
     total_val_loss = 0
     with torch.no_grad():
-        for data in tqdm(data_loader, desc="Iterating eval graphs", unit="batch"):
+        for data in tqdm(data_loader, desc="Evaluating validation graphs", unit="batch"):
             data = data.to(device)
             output = model(data)
-            val_loss = criterion(output, data.y)
+            indices = data.idx if hasattr(data, "idx") else None
+
+            if isinstance(criterion, GCODLoss):
+                val_loss, _ = criterion(output, data.y, indices)
+            else:
+                val_loss = criterion(output, data.y)
+
             total_val_loss += val_loss.item()
+
             pred = output.argmax(dim=1)
             predictions.extend(pred.cpu().numpy())
             labels.extend(data.y.cpu().numpy())
@@ -67,7 +113,7 @@ def evaluate_testing(data_loader, model, device):
     model.eval()
     predictions = []
     with torch.no_grad():
-        for data in tqdm(data_loader, desc="Iterating test graphs", unit="batch"):
+        for data in tqdm(data_loader, desc="Evaluating test graphs", unit="batch"):
             data = data.to(device)
             output = model(data)
             pred = output.argmax(dim=1)
@@ -194,11 +240,6 @@ def main(args):
     
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
-    if args.criterion == "ce":
-        criterion = torch.nn.CrossEntropyLoss(label_smoothing = 0.2)
-    elif args.criterion == "focal":
-        criterion = FocalLoss()
-
     test_dir_name = os.path.basename(os.path.dirname(args.test_path))
 
     # Setup logging
@@ -230,6 +271,16 @@ def main(args):
         num_val = int(len(train_dataset) * val_ratio)
         num_train = len(train_dataset) - num_val
         train_set, val_set = random_split(train_dataset, [num_train, num_val])
+        
+        if args.criterion == "ce":
+            criterion = torch.nn.CrossEntropyLoss(label_smoothing = 0.2)
+        elif args.criterion == "focal":
+            criterion = FocalLoss()
+        elif args.criterion == "gcod":
+            num_train_samples = len(train_set)
+            num_val_samples = len(val_set)
+            criterion_train = GCODLoss(num_train_samples, output_dim, device, u_lr = args.u_lr )
+            criterion_val = GCODLoss(num_val_samples, output_dim, device, u_lr = args.u_lr)
 
         train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True)
         val_loader = DataLoader(val_set, batch_size=args.batch_size, shuffle=False)
@@ -259,14 +310,18 @@ def main(args):
         
         for epoch in range(num_epochs):
             train_loss = train(
-                train_loader, model, optimizer, criterion, device,
-                save_checkpoints=(epoch + 1 in checkpoint_intervals),
-                checkpoint_path=os.path.join(checkpoints_folder, f"model_{test_dir_name}"),
-                current_epoch=epoch
+                train_loader, model, optimizer, 
+                criterion = criterion if args.criterion != "gcod" else criterion_train, 
+                device = device,
+                save_checkpoints = (epoch + 1 in checkpoint_intervals),
+                checkpoint_path = os.path.join(checkpoints_folder, f"model_{test_dir_name}"),
+                current_epoch = epoch
             )
 
-            train_preds, train_labels, _, train_acc = evaluate_training(train_loader, model, criterion, device)
-            val_preds, val_labels, val_loss, val_acc = evaluate_training(val_loader, model, criterion, device)
+            train_preds, train_labels, train_acc = evaluate_training(train_loader, model, device)
+            val_preds, val_labels, val_loss, val_acc = evaluate_validation(val_loader, model, 
+                                                                           criterion = criterion if args.criterion != "gcod" else criterion_val, 
+                                                                           device = device)
             train_f1 = f1_score(train_labels, train_preds, average = "macro")
             val_f1 = f1_score(val_labels, val_preds, average = "macro")
 
@@ -279,8 +334,12 @@ def main(args):
             val_losses.append(val_loss)
             val_accuracies.append(val_acc)
             val_f1s.append(val_f1)
-            logging.info(f"Epoch {epoch + 1}/{num_epochs}, Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}, Train F1: {train_f1:.4f}, Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}, Val F1: {val_f1:.4f}")
             
+            # logging.info(f"Epoch {epoch + 1}/{num_epochs}, Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}, Train F1: {train_f1:.4f}, Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}, Val F1: {val_f1:.4f}")
+            
+            if args.criterion == "gcod":
+                criterion_train.set_a_train(train_acc)
+
             # Save best model
             if val_acc > best_val_acc:
                 best_val_acc = val_acc
@@ -309,7 +368,8 @@ if __name__ == "__main__":
     parser.add_argument("--num_checkpoints", type=int, help="Number of checkpoints to save during training.")
     # parser.add_argument('--device', type=int, default=1, help='which gpu to use if any (default: 0)')
     parser.add_argument('--gnn', type=str, default='def_gcn', help='GNN def_gcn, def_gin, simple_gin, simple_gine, gin_man, gcn_man, gin_virt, gcn_virt (default: def_gcn)')
-    parser.add_argument('--criterion', type=str, default='ce', help='Loss to use, ce or focal (default: ce)')
+    parser.add_argument('--criterion', type=str, default='ce', help='Loss to use, ce, focal, gcod (default: ce)')
+    parser.add_argument('--u_lr', type=float, default=1.0, help='Learning rate for u parameters')
     parser.add_argument('--drop_ratio', type=float, default=0.5, help='dropout ratio (default: 0.5)')
     parser.add_argument('--num_layer', type=int, default=5, help='number of GNN message passing layers (default: 5)')
     parser.add_argument('--emb_dim', type=int, default=300, help='dimensionality of hidden units in GNNs (default: 300)')
