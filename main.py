@@ -71,7 +71,7 @@ def train(data_loader, model, optimizer, criterion, device, save_checkpoints, ch
 
             batch_size = len(indices)
             L2_grad = torch.zeros_like(criterion.u[indices])
-            
+
             correct_mask = torch.tensor(preds == labels, device = device)
             L2_grad[correct_mask] = (2 / criterion.num_classes) * criterion.u[indices][correct_mask] / batch_size
             L2_grad[~correct_mask] = (2 / criterion.num_classes) * (criterion.u[indices][~correct_mask] - 1) / batch_size
@@ -296,18 +296,20 @@ def main(args):
     if args.train_path:
 
         train_dataset = GraphDataset(args.train_path, transform=init_features)
+        print(f"Full train set len: {train_dataset.len}")
 
         if args.train_val_split:
             train_set, val_set = create_split_datasets(train_dataset, val_ratio = 0.2)
-        
         if args.criterion == "ce":
             criterion = torch.nn.CrossEntropyLoss(label_smoothing = 0.2)
         elif args.criterion == "focal":
             criterion = FocalLoss()
         elif args.criterion == "gcod":
             if args.train_val_split:
-                num_train_samples = len(train_set)
-                num_val_samples = len(val_set)
+                num_train_samples = train_set.len
+                num_val_samples = val_set.len
+                print(f"Train subset len: {num_train_samples}")
+                print(f"Val subset len: {num_val_samples}")
                 criterion_train = GCODLoss(num_train_samples, output_dim, device, u_lr = args.u_lr )
                 criterion_val = GCODLoss(num_val_samples, output_dim, device, u_lr = args.u_lr)
             else:
