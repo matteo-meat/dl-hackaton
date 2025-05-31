@@ -208,15 +208,15 @@ def plot_training_progress(train_losses, train_accuracies, train_f1s, val_losses
 def main(args):
 
     set_seed()
-    # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    device = torch.device('cpu')
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    # device = torch.device('cpu')
     # Parameters for the GCN model
     input_dim = 300  # Example input feature dimension (you can adjust this)
     hidden_dim = 64
     output_dim = 6  # Number of classes
 
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    checkpoint_interval = (args.patience // 5) if args.patience else args.epochs // 5
+    checkpoint_interval = args.patience // 5
 
     # Initialize the model, optimizer, and loss criterion
     if args.gnn == 'def_gcn':
@@ -316,7 +316,7 @@ def main(args):
                 train_loader, model, optimizer, 
                 criterion = criterion if args.criterion != "gcod" else criterion_train, 
                 device = device,
-                save_checkpoints = ((epoch + 1) % checkpoint_interval),
+                save_checkpoints = ((epoch + 1) % checkpoint_interval == 0),
                 checkpoint_path = os.path.join(checkpoints_folder, f"model_{test_dir_name}"),
                 current_epoch = epoch
             )
