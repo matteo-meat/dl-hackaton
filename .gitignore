@@ -1,2 +1,4 @@
 data/
 __pycache__/
+run_results/
+*.DS_Store
