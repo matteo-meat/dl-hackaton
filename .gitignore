@@ -1,4 +1,4 @@
 data/
 __pycache__/
-hf-submissions/
+run_results/
 *.DS_Store
