@@ -47,7 +47,7 @@ def create_split_datasets(full_dataset, val_ratio=0.2):
     train_set = SubsetDataset(full_dataset, train_indices)
     val_set = SubsetDataset(full_dataset, val_indices)
     
-    return train_set, val_set
+    return train_set, val_set, len(train_indices), len(val_indices)
 
 def init_features(data):
     data.x = torch.zeros(data.num_nodes, dtype=torch.long)
@@ -295,13 +295,15 @@ def main(args):
     # Train dataset and loader (if train_path is provided)
     if args.train_path:
 
+        num_train_samples = 0
+        num_val_samples = 0
+
         train_dataset = GraphDataset(args.train_path, transform=init_features)
         print(f"Full train set len: {len(train_dataset)}")
 
         if args.train_val_split:
-            train_set, val_set = create_split_datasets(train_dataset, val_ratio = 0.2)
-            print(f"Type of subsets: {type(train_set), type(val_set)}")
-            print(f"Len of subsets: {len(train_set), len(val_set)}")
+            train_set, val_set, num_train_samples, num_val_samples = create_split_datasets(train_dataset, val_ratio = 0.2)
+            print(f"Len of subsets: {num_train_samples, num_val_samples}")
         
         if args.criterion == "ce":
             criterion = torch.nn.CrossEntropyLoss(label_smoothing = 0.2)
@@ -309,8 +311,6 @@ def main(args):
             criterion = FocalLoss()
         elif args.criterion == "gcod":
             if args.train_val_split:
-                num_train_samples = train_set.len
-                num_val_samples = val_set.len
                 criterion_train = GCODLoss(num_train_samples, output_dim, device, u_lr = args.u_lr )
                 criterion_val = GCODLoss(num_val_samples, output_dim, device, u_lr = args.u_lr)
             else:
