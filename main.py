@@ -142,7 +142,7 @@ def save_predictions(predictions, test_path):
     output_df.to_csv(output_csv_path, index=False)
     print(f"Predictions saved to {output_csv_path}")
 
-def plot_training_progress(train_losses, train_accuracies, train_f1s, val_losses, val_accuracies, val_f1s, output_dir):
+def plot_training_progress(train_losses, train_accuracies, train_f1s, val_losses, val_accuracies, val_f1s, output_dir, train_val_split = False):
     epochs = range(1, len(train_losses) + 1)
     plt.figure(figsize=(18, 6))
 
@@ -175,33 +175,34 @@ def plot_training_progress(train_losses, train_accuracies, train_f1s, val_losses
 
     plt.figure(figsize=(18, 6))
 
-    # Plot validation loss
-    plt.subplot(1, 3, 1)
-    plt.plot(epochs, val_losses, label="Validation Loss", color='blue')
-    plt.xlabel('Epoch')
-    plt.ylabel('Loss')
-    plt.title('Validation Loss per Epoch')
-    print("Validation loss plotted!")
+    if train_val_split:
+        # Plot validation loss
+        plt.subplot(1, 3, 1)
+        plt.plot(epochs, val_losses, label="Validation Loss", color='blue')
+        plt.xlabel('Epoch')
+        plt.ylabel('Loss')
+        plt.title('Validation Loss per Epoch')
+        print("Validation loss plotted!")
 
-    # Plot validation accuracy
-    plt.subplot(1, 3, 2)
-    plt.plot(epochs, val_accuracies, label="Validation Accuracy", color='green')
-    plt.xlabel('Epoch')
-    plt.ylabel('Accuracy')
-    plt.title('Validation Accuracy per Epoch')
+        # Plot validation accuracy
+        plt.subplot(1, 3, 2)
+        plt.plot(epochs, val_accuracies, label="Validation Accuracy", color='green')
+        plt.xlabel('Epoch')
+        plt.ylabel('Accuracy')
+        plt.title('Validation Accuracy per Epoch')
 
-    # Plot validation f1
-    plt.subplot(1, 3, 3)
-    plt.plot(epochs, val_f1s, label="Validation F1 score", color='green')
-    plt.xlabel('Epoch')
-    plt.ylabel('F1 score')
-    plt.title('Validation F1 score per Epoch')
+        # Plot validation f1
+        plt.subplot(1, 3, 3)
+        plt.plot(epochs, val_f1s, label="Validation F1 score", color='green')
+        plt.xlabel('Epoch')
+        plt.ylabel('F1 score')
+        plt.title('Validation F1 score per Epoch')
 
-    # Save plots in the current directory
-    os.makedirs(output_dir, exist_ok=True)
-    plt.tight_layout()
-    plt.savefig(os.path.join(output_dir, "validation_progress.png"))
-    plt.close()
+        # Save plots in the current directory
+        os.makedirs(output_dir, exist_ok=True)
+        plt.tight_layout()
+        plt.savefig(os.path.join(output_dir, "validation_progress.png"))
+        plt.close()
 
 
 def main(args):
@@ -268,23 +269,31 @@ def main(args):
 
         train_dataset = GraphDataset(args.train_path, transform=init_features)
 
-        val_ratio = 0.2
-        num_val = int(len(train_dataset) * val_ratio)
-        num_train = len(train_dataset) - num_val
-        train_set, val_set = random_split(train_dataset, [num_train, num_val])
+        if args.train_val_split:
+            val_ratio = 0.2
+            num_val = int(len(train_dataset) * val_ratio)
+            num_train = len(train_dataset) - num_val
+            train_set, val_set = random_split(train_dataset, [num_train, num_val])
         
         if args.criterion == "ce":
             criterion = torch.nn.CrossEntropyLoss(label_smoothing = 0.2)
         elif args.criterion == "focal":
             criterion = FocalLoss()
         elif args.criterion == "gcod":
-            num_train_samples = len(train_set)
-            num_val_samples = len(val_set)
-            criterion_train = GCODLoss(num_train_samples, output_dim, device, u_lr = args.u_lr )
-            criterion_val = GCODLoss(num_val_samples, output_dim, device, u_lr = args.u_lr)
+            if args.train_val_split:
+                num_train_samples = len(train_set)
+                num_val_samples = len(val_set)
+                criterion_train = GCODLoss(num_train_samples, output_dim, device, u_lr = args.u_lr )
+                criterion_val = GCODLoss(num_val_samples, output_dim, device, u_lr = args.u_lr)
+            else:
+                num_train_samples = len(train_dataset)
+                criterion_train = GCODLoss(num_train_samples, output_dim, device, u_lr = args.u_lr )
 
-        train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True)
-        val_loader = DataLoader(val_set, batch_size=args.batch_size, shuffle=False)
+        if args.train_val_split:
+            train_loader = DataLoader(train_set, batch_size=args.batch_size, shuffle=True)
+            val_loader = DataLoader(val_set, batch_size=args.batch_size, shuffle=False)
+        else:
+            train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
 
         # Training loop
         num_epochs = args.epochs
@@ -295,7 +304,6 @@ def main(args):
         val_losses = []
         val_accuracies = []
         val_f1s = []
-
         # best_val_loss = np.inf
         best_val_acc = 0
 
@@ -314,41 +322,46 @@ def main(args):
             )
 
             train_preds, train_labels, train_acc = evaluate_training(train_loader, model, device)
-            val_preds, val_labels, val_loss, val_acc = evaluate_validation(val_loader, model, 
-                                                                           criterion = criterion if args.criterion != "gcod" else criterion_val, 
-                                                                           device = device)
             train_f1 = f1_score(train_labels, train_preds, average = "macro")
-            val_f1 = f1_score(val_labels, val_preds, average = "macro")
-
-            print(f"Epoch {epoch + 1}/{num_epochs}, Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}, Train F1: {train_f1:.4f}, Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}, Val F1: {val_f1:.4f}")
+            if args.train_val_split:
+                val_preds, val_labels, val_loss, val_acc = evaluate_validation(val_loader, model, 
+                                                                            criterion = criterion if args.criterion != "gcod" else criterion_val, 
+                                                                            device = device)
+                val_f1 = f1_score(val_labels, val_preds, average = "macro")
 
             # Save logs for training progress
             train_losses.append(train_loss)
             train_accuracies.append(train_acc)
             train_f1s.append(train_f1)
-            val_losses.append(val_loss)
-            val_accuracies.append(val_acc)
-            val_f1s.append(val_f1)
+            
+            if args.train_val_split:
+                val_losses.append(val_loss)
+                val_accuracies.append(val_acc)
+                val_f1s.append(val_f1)
+                print(f"Epoch {epoch + 1}/{num_epochs}, Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}, Train F1: {train_f1:.4f}, Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}, Val F1: {val_f1:.4f}")
+            else:
+                print(f"Epoch {epoch + 1}/{num_epochs}, Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}, Train F1: {train_f1:.4f}")
             
             # logging.info(f"Epoch {epoch + 1}/{num_epochs}, Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}, Train F1: {train_f1:.4f}, Val Loss: {val_loss:.4f}, Val Acc: {val_acc:.4f}, Val F1: {val_f1:.4f}")
             
             if args.criterion == "gcod":
                 criterion_train.set_a_train(train_acc)
 
-            # Save best model
-            if val_acc > best_val_acc:
-                best_val_acc = val_acc
-                torch.save(model.state_dict(), best_checkpoint_path)
-                print(f"Best model updated and saved at {best_checkpoint_path}")
-                if args.early_stopping:
-                    epochs_without_improvement = 0
-            elif args.early_stopping:
-                epochs_without_improvement += 1
-                if epochs_without_improvement >= patience:
-                    print(f"Early stopping triggered after {epoch + 1} epochs!")
-                    break
+            if args.train_val_split:
+                # Save best model
+                if val_acc > best_val_acc:
+                    best_val_acc = val_acc
+                    torch.save(model.state_dict(), best_checkpoint_path)
+                    print(f"Best model updated and saved at {best_checkpoint_path}")
+                    if args.early_stopping:
+                        epochs_without_improvement = 0
+                elif args.early_stopping:
+                    epochs_without_improvement += 1
+                    if epochs_without_improvement >= patience:
+                        print(f"Early stopping triggered after {epoch + 1} epochs!")
+                        break
         
-        plot_training_progress(train_losses, train_accuracies, train_f1s, val_losses, val_accuracies, val_f1s, os.path.join(logs_folder, "plots"))
+        plot_training_progress(train_losses, train_accuracies, train_f1s, val_losses, val_accuracies, val_f1s, os.path.join(logs_folder, "plots"), args.train_val_split)
 
     # Evaluate and save test predictions
     model.load_state_dict(torch.load(best_checkpoint_path))
@@ -372,6 +385,7 @@ if __name__ == "__main__":
     parser.add_argument('--epochs', type=int, default=1000, help='number of epochs to train (default: 1000)')
     parser.add_argument('--early_stopping', action='store_true', default=False, help='early stopping or not (default: False)')
     parser.add_argument('--patience', type=int, default=50, help='max number of epochs without training improvements (default: 50)')
+    parser.add_argument('--train_val_split', action='store_true', default=False, help='80% train 20% validation split (default: False)')
     
     args = parser.parse_args()
     main(args)
