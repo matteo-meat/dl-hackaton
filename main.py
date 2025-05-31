@@ -296,7 +296,7 @@ def main(args):
     if args.train_path:
 
         train_dataset = GraphDataset(args.train_path, transform=init_features)
-        print(f"Full train set len: {train_dataset.len}")
+        print(f"Full train set len: {len(train_dataset)}")
 
         if args.train_val_split:
             train_set, val_set = create_split_datasets(train_dataset, val_ratio = 0.2)
