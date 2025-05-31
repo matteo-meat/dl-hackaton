@@ -1,5 +1,7 @@
 # Repository for the hackathon of Deep Learning course, a.y. 2024-2025
 
+## Authors: Matteo Carnebella, Francesco Di Lorenzo
+
 ## Usage
 
 ```bash
