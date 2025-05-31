@@ -15,7 +15,7 @@ from sklearn.metrics import f1_score
 from src.utils import set_seed
 from src.loss import FocalLoss, GCODLoss
 from src.loadData import GraphDataset
-from src.models import DefaultGCN, DefaultGIN, SimpleGIN, SimpleGINE, TurboGNN
+from src.models import DefaultGCN, DefaultGIN, SimpleGIN, SimpleGINE
 
 class ResetIndexDataset(torch.utils.data.Dataset):
     def __init__(self, subset):
@@ -237,8 +237,6 @@ def main(args):
         model = SimpleGIN(hidden_dim, output_dim).to(device)
     elif args.gnn == 'simple_gine':
         model = SimpleGINE(hidden_dim, output_dim).to(device)
-    elif args.gnn == "turbo":
-        model = TurboGNN().to(device)
     
     optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 
@@ -381,7 +379,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Train and evaluate GNN models on graph datasets.")
     parser.add_argument("--train_path", type=str, help="Path to the training dataset (optional).")
     parser.add_argument("--test_path", type=str, required=True, help="Path to the test dataset.")
-    parser.add_argument('--gnn', type=str, default='def_gcn', help='GNN def_gcn, def_gin, simple_gin, simple_gine, turbo (default: def_gcn)')
+    parser.add_argument('--gnn', type=str, default='def_gcn', help='GNN def_gcn, def_gin, simple_gin, simple_gine (default: def_gcn)')
     parser.add_argument('--criterion', type=str, default='ce', help='Loss to use, ce, focal, gcod (default: ce)')
     parser.add_argument('--u_lr', type=float, default=1.0, help='Learning rate for u parameters')
     parser.add_argument('--batch_size', type=int, default=32, help='input batch size for training (default: 32)')

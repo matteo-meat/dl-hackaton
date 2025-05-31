@@ -12,7 +12,7 @@ python main.py --test_path /path/to/test/dataset [OPTIONS]
 ### Optional Arguments
 - `--train_path`: Path to the training dataset
 - `--gnn`: GNN architecture (default: `def_gcn`)
-  - Options: `def_gcn`, `def_gin`, `simple_gin`, `simple_gine`, `turbo`
+  - Options: `def_gcn`, `def_gin`, `simple_gin`, `simple_gine`
 - `--criterion`: Loss function (default: `ce`)
   - Options: `ce`, `focal`, `gcod`
 - `--u_lr`: Learning rate for u parameters (default: `1.0`)
