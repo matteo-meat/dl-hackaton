@@ -300,6 +300,9 @@ def main(args):
 
         if args.train_val_split:
             train_set, val_set = create_split_datasets(train_dataset, val_ratio = 0.2)
+            print(f"Type of subsets: {type(train_set), type(val_set)}")
+            print(f"Len of subsets: {len(train_set), len(val_set)}")
+        
         if args.criterion == "ce":
             criterion = torch.nn.CrossEntropyLoss(label_smoothing = 0.2)
         elif args.criterion == "focal":
@@ -308,8 +311,6 @@ def main(args):
             if args.train_val_split:
                 num_train_samples = train_set.len
                 num_val_samples = val_set.len
-                print(f"Train subset len: {num_train_samples}")
-                print(f"Val subset len: {num_val_samples}")
                 criterion_train = GCODLoss(num_train_samples, output_dim, device, u_lr = args.u_lr )
                 criterion_val = GCODLoss(num_val_samples, output_dim, device, u_lr = args.u_lr)
             else:
